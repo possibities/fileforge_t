@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional, Tuple
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from core.sequence_generator import SequenceGenerator
@@ -19,7 +20,9 @@ from core.sequence_generator import SequenceGenerator
 from .models import (
     ArchivePage,
     ArchiveRecord,
+    AuditLog,
     ExportFile,
+    MetadataRevision,
     ProcessingBatch,
     ProcessingJob,
     ProcessingJobAttempt,
@@ -497,6 +500,7 @@ def record_export_file(
 
 
 __all__ = [
+    "FieldRevision",
     "get_or_create_project",
     "get_or_create_batch",
     "update_batch_progress",
@@ -510,4 +514,174 @@ __all__ = [
     "mark_archive_status",
     "assign_sequence",
     "record_export_file",
+    "next_revision_no",
+    "record_revisions",
+    "record_audit_log",
+    "apply_force_rerun_rules",
 ]
+
+
+# ── 修正记录与审计日志(数据契约 §4.7) ───────────────────────────────────────
+@dataclass
+class FieldRevision:
+    """单字段差异记录,作为 record_revisions 的输入单元。
+
+    field_key 为中文 metadata key(如 "题名"),field_column 是英文冗余列名(可空)。
+    old_value/new_value 落 JSONB,允许 None。
+    """
+
+    field_key: str
+    field_column: Optional[str] = None
+    old_value: Optional[Any] = None
+    new_value: Optional[Any] = None
+
+
+def next_revision_no(session: Session, *, archive_id: int) -> int:
+    """档案内 revision_no 单调递增分配。
+
+    并发场景下应在调用方持有 archive_records 行锁;阶段 1B 的修正写入由
+    apply_force_rerun_rules / 后续人工修正 API 在事务内完成。
+    """
+    current = session.scalar(
+        select(func.max(MetadataRevision.revision_no)).where(
+            MetadataRevision.archive_id == archive_id
+        )
+    )
+    return int(current or 0) + 1
+
+
+def record_revisions(
+    session: Session,
+    *,
+    archive_id: int,
+    revisions: Iterable[FieldRevision],
+    actor_user_id: Optional[int] = None,
+    reason: Optional[str] = None,
+    revision_no: Optional[int] = None,
+) -> int:
+    """把一组字段 diff 写成同一 revision_no 的多行;返回该 revision_no。
+
+    若 revisions 为空,直接返回 0 且不分配 revision_no(无副作用)。
+    """
+    rev_list = [r for r in revisions if r is not None]
+    if not rev_list:
+        return 0
+
+    if revision_no is None:
+        revision_no = next_revision_no(session, archive_id=archive_id)
+
+    for rev in rev_list:
+        session.add(
+            MetadataRevision(
+                archive_id=archive_id,
+                revision_no=revision_no,
+                field_key=rev.field_key,
+                field_column=rev.field_column,
+                old_value=rev.old_value,
+                new_value=rev.new_value,
+                reason=reason,
+                created_by=actor_user_id,
+            )
+        )
+    session.flush()
+    return revision_no
+
+
+def record_audit_log(
+    session: Session,
+    *,
+    actor_user_id: Optional[int] = None,
+    action: str,
+    target_type: Optional[str] = None,
+    target_id: Optional[int] = None,
+    before_data: Optional[Any] = None,
+    after_data: Optional[Any] = None,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
+) -> AuditLog:
+    log = AuditLog(
+        actor_user_id=actor_user_id,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        before_data=before_data,
+        after_data=after_data,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    session.add(log)
+    session.flush()
+    return log
+
+
+def _diff_metadata_to_revisions(
+    old: dict[str, Any],
+    new: dict[str, Any],
+) -> list[FieldRevision]:
+    """对比新旧 metadata,返回需要写入 metadata_revisions 的字段差异。
+
+    采用并集 key 比较,任何值差异都生成一条;新增字段 old=None,删除字段 new=None。
+    """
+    out: list[FieldRevision] = []
+    keys = set(old.keys()) | set(new.keys())
+    for key in sorted(keys):
+        old_v = old.get(key)
+        new_v = new.get(key)
+        if old_v == new_v:
+            continue
+        out.append(
+            FieldRevision(
+                field_key=key,
+                field_column=_REDUNDANT_COLUMN_MAP.get(key),
+                old_value=old_v,
+                new_value=new_v,
+            )
+        )
+    return out
+
+
+def apply_force_rerun_rules(
+    session: Session,
+    *,
+    archive: ArchiveRecord,
+    new_metadata: dict[str, Any],
+    actor_user_id: Optional[int] = None,
+    reason: str = "rules_rerun_force",
+) -> int:
+    """显式 --force-rerun-rules:覆盖已 corrected 档案的 final_metadata。
+
+    自动生成:
+      - 一组字段级 metadata_revisions(共享同一 revision_no,reason=rules_rerun_force)
+      - 一条 audit_logs(action=force_rerun_rules)
+
+    返回写入的 revision_no(无差异时返回 0,且不写 audit)。
+    """
+    old_final = dict(archive.final_metadata or {})
+    diffs = _diff_metadata_to_revisions(old_final, new_metadata)
+    if not diffs:
+        return 0
+
+    rev_no = record_revisions(
+        session,
+        archive_id=archive.id,
+        revisions=diffs,
+        actor_user_id=actor_user_id,
+        reason=reason,
+    )
+    apply_classification_result(
+        session,
+        archive=archive,
+        final_metadata=new_metadata,
+        rules_metadata=new_metadata,
+        force_rerun_rules=True,
+    )
+    record_audit_log(
+        session,
+        actor_user_id=actor_user_id,
+        action="force_rerun_rules",
+        target_type="archive",
+        target_id=archive.id,
+        before_data=old_final,
+        after_data=new_metadata,
+    )
+    return rev_no

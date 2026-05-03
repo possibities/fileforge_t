@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import repositories
@@ -295,6 +295,51 @@ class BatchRecorder:
         except Exception as exc:
             self._state.db_error_count += 1
             logger.exception("[DB] record_export 失败 type=%s: %s", export_type, exc)
+
+    def force_rerun_rules_for_archive(
+        self,
+        *,
+        archive_key: str,
+        new_metadata: Dict[str, Any],
+        actor_user_id: Optional[int] = None,
+        reason: str = "rules_rerun_force",
+    ) -> Optional[int]:
+        """对单个档案显式触发规则重跑覆盖。
+
+        典型使用场景:CLI 工具或人工修正 API 在用户确认后调用。
+        - 找到该 batch 下的 archive_records 行
+        - 在事务内 diff 旧 final_metadata 与 new_metadata,生成 revisions+audit
+        - 用 new_metadata 覆盖 final_metadata 与冗余列(force_rerun_rules=True)
+
+        返回写入的 revision_no;无差异时返回 0;DB 错误返回 None。
+        """
+        try:
+            with self._session_factory() as session:
+                archive = session.scalar(
+                    select(ArchiveRecord).where(
+                        ArchiveRecord.batch_id == self._state.batch_id,
+                        ArchiveRecord.archive_key == archive_key,
+                    )
+                )
+                if archive is None:
+                    raise RuntimeError(
+                        f"archive_key={archive_key!r} 在 batch_id={self._state.batch_id} 下不存在"
+                    )
+                rev_no = repositories.apply_force_rerun_rules(
+                    session,
+                    archive=archive,
+                    new_metadata=new_metadata,
+                    actor_user_id=actor_user_id,
+                    reason=reason,
+                )
+                session.commit()
+                return rev_no
+        except Exception as exc:
+            self._state.db_error_count += 1
+            logger.exception(
+                "[DB] force_rerun_rules_for_archive 失败 %s: %s", archive_key, exc
+            )
+            return None
 
     def on_batch_finish(
         self,

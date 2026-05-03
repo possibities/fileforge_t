@@ -16,8 +16,10 @@ try:
     from infrastructure.db.models import (
         ArchivePage,
         ArchiveRecord,
+        AuditLog,
         Base,
         ExportFile,
+        MetadataRevision,
         ProcessingBatch,
         ProcessingJob,
         ProcessingJobAttempt,
@@ -241,6 +243,76 @@ class TestDbModels(unittest.TestCase):
                 ]
             )
             session.commit()  # 不应抛异常
+
+    def test_metadata_revision_unique_constraint(self):
+        with self.Session() as session:
+            project = Project(project_key="rv")
+            session.add(project)
+            session.flush()
+            batch = ProcessingBatch(project_id=project.id, batch_key="rvb")
+            session.add(batch)
+            session.flush()
+            archive = ArchiveRecord(
+                project_id=project.id,
+                batch_id=batch.id,
+                archive_key="rva",
+                archive_name="rva",
+            )
+            session.add(archive)
+            session.flush()
+
+            # 同一 (archive_id, revision_no) 下不同 field_key 允许
+            session.add_all(
+                [
+                    MetadataRevision(
+                        archive_id=archive.id,
+                        revision_no=1,
+                        field_key="题名",
+                        old_value="a",
+                        new_value="b",
+                    ),
+                    MetadataRevision(
+                        archive_id=archive.id,
+                        revision_no=1,
+                        field_key="责任者",
+                        old_value="x",
+                        new_value="y",
+                    ),
+                ]
+            )
+            session.commit()
+
+            # 同一 (archive_id, revision_no, field_key) 重复必须报错
+            session.add(
+                MetadataRevision(
+                    archive_id=archive.id,
+                    revision_no=1,
+                    field_key="题名",
+                    old_value="a",
+                    new_value="c",
+                )
+            )
+            with self.assertRaises(Exception):
+                session.commit()
+
+    def test_audit_log_basic_insert(self):
+        with self.Session() as session:
+            session.add(
+                AuditLog(
+                    actor_user_id=None,
+                    action="login",
+                    target_type="user",
+                    target_id=42,
+                    before_data=None,
+                    after_data={"ip": "127.0.0.1"},
+                )
+            )
+            session.commit()
+
+            log = session.scalar(select(AuditLog))
+            self.assertEqual(log.action, "login")
+            self.assertEqual(log.target_id, 42)
+            self.assertEqual(log.after_data, {"ip": "127.0.0.1"})
 
 
 if __name__ == "__main__":

@@ -372,6 +372,64 @@ class ExportFile(Base):
     created_at: Mapped[datetime] = _ts_col()
 
 
+# ── 修正记录(数据契约 §4.7) ─────────────────────────────────────────────────
+class MetadataRevision(Base):
+    """档案级元数据字段修正历史。
+
+    一次"保存动作"产生 N 行(每修一个字段一行),它们共享同一 revision_no;
+    revision_no 在档案内单调递增,数据契约 §4.7。
+    """
+
+    __tablename__ = "metadata_revisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    archive_id: Mapped[int] = mapped_column(
+        ForeignKey("archive_records.id", ondelete="CASCADE"), nullable=False
+    )
+    revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    field_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    field_column: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    old_value: Mapped[Optional[Any]] = mapped_column(JsonDoc, nullable=True)
+    new_value: Mapped[Optional[Any]] = mapped_column(JsonDoc, nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = _ts_col()
+
+    __table_args__ = (
+        UniqueConstraint(
+            "archive_id", "revision_no", "field_key", name="uq_revision_field"
+        ),
+        Index("ix_revisions_archive_revision", "archive_id", "revision_no"),
+    )
+
+
+# ── 审计日志(数据契约 §4.7) ─────────────────────────────────────────────────
+class AuditLog(Base):
+    """系统级操作审计:登录、导出、状态变更、强制重跑、权限变更等。
+
+    与 MetadataRevision 解耦:revision 面向业务字段差异,audit 面向系统行为。
+    两者都 append-only,不允许覆盖。
+    """
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    actor_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    target_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    before_data: Mapped[Optional[Any]] = mapped_column(JsonDoc, nullable=True)
+    after_data: Mapped[Optional[Any]] = mapped_column(JsonDoc, nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = _ts_col()
+
+    __table_args__ = (
+        Index("ix_audit_action_created", "action", "created_at"),
+        Index("ix_audit_target", "target_type", "target_id"),
+    )
+
+
 __all__ = [
     "Base",
     "JsonDoc",
@@ -389,4 +447,6 @@ __all__ = [
     "ProcessingJobAttempt",
     "SequenceCounter",
     "ExportFile",
+    "MetadataRevision",
+    "AuditLog",
 ]
