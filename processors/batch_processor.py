@@ -35,8 +35,9 @@ class BatchProcessor:
     ERROR_EMPTY_METADATA = "EMPTY_METADATA"
     ERROR_PROCESS_EXCEPTION = "PROCESS_EXCEPTION"
 
-    def __init__(self, classifier):
+    def __init__(self, classifier, recorder=None):
         self.classifier = classifier
+        self.recorder = recorder
 
     def scan_directory_structure(
         self,
@@ -111,9 +112,38 @@ class BatchProcessor:
             output_path = Path(output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
 
-        sequence_generator = SequenceGenerator()
+        if self.recorder is not None:
+            try:
+                self.recorder.on_batch_start(
+                    total_archives=total_archives,
+                    total_pages=total_pages,
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.exception("[Recorder] on_batch_start 异常（忽略，继续走文件路径）: %s", exc)
+
+        sequence_generator = (
+            self.recorder.allocator if self.recorder is not None else SequenceGenerator()
+        )
 
         for idx, (archive_name, image_paths) in enumerate(archive_dict.items(), 1):
+            archive_key = archive_name
+            ctx = None
+
+            if self.recorder is not None:
+                try:
+                    if self.recorder.should_skip(archive_key):
+                        cached = self.recorder.load_previous_success(archive_key)
+                        if cached is not None:
+                            results.append(cached)
+                            success_count += 1
+                            if output_path:
+                                safe_name = self._sanitize_filename(archive_name)
+                                item_name = f"{idx:04d}_{safe_name}_result.json"
+                                self._save_json(cached, output_path / item_name)
+                            continue
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.exception("[Recorder] skip-success 检查异常: %s", exc)
+
             source_folder, created_time = self._resolve_source_info(image_paths)
             base_result = {
                 "archive_name": archive_name,
@@ -123,6 +153,18 @@ class BatchProcessor:
                 "image_names": [Path(path).name for path in image_paths],
                 "processed_time": created_time,
             }
+
+            if self.recorder is not None and image_paths:
+                try:
+                    ctx = self.recorder.on_archive_start(
+                        archive_name=archive_name,
+                        archive_key=archive_key,
+                        source_folder=source_folder,
+                        image_paths=image_paths,
+                        processed_time=created_time,
+                    )
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.exception("[Recorder] on_archive_start 异常: %s", exc)
 
             if not image_paths:
                 result = self._build_result(
@@ -171,10 +213,26 @@ class BatchProcessor:
 
             results.append(result)
 
+            result_filename = None
             if output_path:
                 safe_name = self._sanitize_filename(archive_name)
                 item_name = f"{idx:04d}_{safe_name}_result.json"
                 self._save_json(result, output_path / item_name)
+                result_filename = item_name
+
+            if self.recorder is not None:
+                try:
+                    self.recorder.on_archive_complete(
+                        ctx,
+                        status=result["status"],
+                        metadata=result.get("metadata"),
+                        error_code=result.get("error_code"),
+                        error_message=result.get("error_message"),
+                        traceback_text=result.get("traceback"),
+                        result_filename=result_filename,
+                    )
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.exception("[Recorder] on_archive_complete 异常: %s", exc)
 
         failure_breakdown = self._build_failure_breakdown(results)
         if output_path:
@@ -206,6 +264,17 @@ class BatchProcessor:
             logger.info("  Failure breakdown: %s", failure_breakdown)
         logger.info("  Total images: %s", total_pages)
         logger.info("%s\n", "=" * 70)
+
+        if self.recorder is not None:
+            try:
+                self.recorder.on_batch_finish(
+                    success_count=success_count,
+                    fail_count=fail_count,
+                    failure_breakdown=failure_breakdown,
+                    batch_status="completed",
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.exception("[Recorder] on_batch_finish 异常: %s", exc)
 
         return results
 

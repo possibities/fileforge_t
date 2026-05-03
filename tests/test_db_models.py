@@ -1,0 +1,167 @@
+"""SQLite in-memory smoke test for the phase 1A ORM models.
+
+Skipped automatically if SQLAlchemy is unavailable (base.txt does not include it).
+"""
+
+from __future__ import annotations
+
+import unittest
+
+
+try:
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from infrastructure.db.models import (
+        ArchivePage,
+        ArchiveRecord,
+        Base,
+        ExportFile,
+        ProcessingBatch,
+        ProcessingJob,
+        ProcessingJobAttempt,
+        Project,
+        SequenceCounter,
+    )
+except ImportError as _exc:  # pragma: no cover - exercised when sqlalchemy 不在环境中
+    SQLALCHEMY_AVAILABLE = False
+    _IMPORT_ERROR = _exc
+else:
+    SQLALCHEMY_AVAILABLE = True
+    _IMPORT_ERROR = None
+
+
+@unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
+class TestDbModels(unittest.TestCase):
+    def setUp(self):
+        self.engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+            future=True,
+        )
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def test_create_full_chain(self):
+        with self.Session() as session:
+            project = Project(project_key="demo", project_name="demo project")
+            session.add(project)
+            session.flush()
+
+            batch = ProcessingBatch(
+                project_id=project.id,
+                batch_key="2026-05-03_demo",
+                input_dir="/tmp/in",
+                output_dir="/tmp/out",
+            )
+            session.add(batch)
+            session.flush()
+
+            archive = ArchiveRecord(
+                project_id=project.id,
+                batch_id=batch.id,
+                archive_key="folder_a",
+                archive_name="folder_a",
+                page_count=2,
+                image_files=["a/0001.jpg", "a/0002.jpg"],
+                image_names=["0001.jpg", "0002.jpg"],
+                title="测试题名",
+                final_metadata={"题名": "测试题名", "归档年度": "2026"},
+            )
+            session.add(archive)
+            session.flush()
+
+            session.add_all(
+                [
+                    ArchivePage(
+                        archive_id=archive.id,
+                        page_no=1,
+                        image_path="a/0001.jpg",
+                        image_name="0001.jpg",
+                        file_hash="deadbeef",
+                    ),
+                    ArchivePage(
+                        archive_id=archive.id,
+                        page_no=2,
+                        image_path="a/0002.jpg",
+                        image_name="0002.jpg",
+                        file_hash="cafebabe",
+                    ),
+                ]
+            )
+            job = ProcessingJob(
+                batch_id=batch.id, archive_id=archive.id, processing_status="success"
+            )
+            session.add(job)
+            session.flush()
+            session.add(
+                ProcessingJobAttempt(
+                    job_id=job.id, attempt_no=1, processing_status="success"
+                )
+            )
+            session.add(
+                SequenceCounter(
+                    project_id=project.id,
+                    archive_year="2026",
+                    classification_code="DQL",
+                    retention_period_code="D30",
+                    current_value=1,
+                )
+            )
+            session.add(
+                ExportFile(
+                    batch_id=batch.id,
+                    export_type="json",
+                    file_path="/tmp/out/result.json",
+                    row_count=1,
+                )
+            )
+            session.commit()
+
+        with self.Session() as session:
+            archive = session.scalar(select(ArchiveRecord))
+            self.assertEqual(archive.title, "测试题名")
+            self.assertEqual(archive.final_metadata["归档年度"], "2026")
+            self.assertEqual(len(archive.image_files), 2)
+
+            counter = session.scalar(select(SequenceCounter))
+            self.assertEqual(counter.current_value, 1)
+
+    def test_unique_archive_per_batch(self):
+        with self.Session() as session:
+            project = Project(project_key="demo")
+            session.add(project)
+            session.flush()
+            batch = ProcessingBatch(project_id=project.id, batch_key="b1")
+            session.add(batch)
+            session.flush()
+            session.add(
+                ArchiveRecord(
+                    project_id=project.id,
+                    batch_id=batch.id,
+                    archive_key="dup",
+                    archive_name="dup",
+                )
+            )
+            session.commit()
+
+            session.add(
+                ArchiveRecord(
+                    project_id=project.id,
+                    batch_id=batch.id,
+                    archive_key="dup",
+                    archive_name="dup",
+                )
+            )
+            with self.assertRaises(Exception):
+                session.commit()
+
+
+if __name__ == "__main__":
+    unittest.main()

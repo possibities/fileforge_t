@@ -93,3 +93,13 @@ class Config:
     )
     INPUT_DIR: str = _env_path("INPUT_DIR", _BASE / "input_documents")
     OUTPUT_DIR: str = _env_path("OUTPUT_DIR", _BASE / "output_results")
+
+    # ── 数据库（旁路写库，未配置时整条管线行为不变） ─────────────────────────
+    # DATABASE_URL 留空 → 跳过任何数据库写入，main.py 走纯文件路径
+    # 设置后必须显式指定 PROJECT_KEY 与 BATCH_KEY，否则启动失败
+    DATABASE_URL: str = _env_str("DATABASE_URL", "")
+    PROJECT_KEY: str = _env_str("PROJECT_KEY", "")
+    PROJECT_NAME: str = _env_str("PROJECT_NAME", "")
+    BATCH_KEY: str = _env_str("BATCH_KEY", "")
+    # skip-success / rerun-failed-only / rerun-all / force-renumber
+    DB_RERUN_POLICY: str = _env_str("DB_RERUN_POLICY", "skip-success")

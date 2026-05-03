@@ -1,0 +1,7 @@
+# PostgreSQL 旁路写库依赖。
+# 仅在需要把批处理结果落到数据库时安装；纯 OCR/LLM/导出场景安装 base.txt 即可。
+-r base.txt
+
+SQLAlchemy>=2.0,<3.0
+alembic>=1.13,<2.0
+psycopg[binary]>=3.1,<4.0
