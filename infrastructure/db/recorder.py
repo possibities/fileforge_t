@@ -211,6 +211,7 @@ class BatchRecorder:
         error_message: Optional[str] = None,
         traceback_text: Optional[str] = None,
         result_filename: Optional[str] = None,
+        llm_trace: Optional[Any] = None,
     ) -> None:
         if ctx is None:
             return
@@ -227,6 +228,12 @@ class BatchRecorder:
                         final_metadata=metadata,
                         rules_metadata=metadata,
                     )
+                if llm_trace is not None:
+                    archive.llm_raw_response = getattr(llm_trace, "raw_response", None)
+                    archive.llm_cleaned_response = getattr(llm_trace, "cleaned_response", None)
+                    strategy = getattr(llm_trace, "parse_strategy", None)
+                    if strategy:
+                        archive.llm_parse_strategy = strategy
                 repositories.mark_archive_status(
                     session,
                     archive=archive,

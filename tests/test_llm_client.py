@@ -11,7 +11,13 @@ if "openai" not in sys.modules:
     openai_stub.OpenAI = object
     sys.modules["openai"] = openai_stub
 
-from infrastructure.llm_client import LlmClient
+from infrastructure.llm_client import (
+    PARSE_STRATEGY_FAILED,
+    PARSE_STRATEGY_JSON,
+    PARSE_STRATEGY_REGEX,
+    PARSE_STRATEGY_REPAIRED,
+    LlmClient,
+)
 
 
 class TestLlmClientRegexFallback(unittest.TestCase):
@@ -81,10 +87,52 @@ class TestLlmClientRegexFallback(unittest.TestCase):
             "\"unknown\": "
         )
 
-        metadata = client._parse_json(raw)
+        metadata, strategy = client._parse_json(raw)
 
         self.assertEqual(metadata[key_text], "ok")
         self.assertEqual(metadata[key_year], 2020)
+        self.assertEqual(strategy, PARSE_STRATEGY_REGEX)
+
+
+class TestLlmClientParseStrategy(unittest.TestCase):
+    """覆盖 _parse_json 的四档解析路径,strategy 标签必须与数据库列对齐。"""
+
+    def _build_client(self):
+        client = LlmClient.__new__(LlmClient)
+        client.metadata_schema = METADATA_SCHEMA
+        return client
+
+    def test_strategy_json_on_clean_payload(self):
+        client = self._build_client()
+        key = list(METADATA_SCHEMA.keys())[0]
+        raw = "{" f"\"{key}\": \"hello\"" "}"
+        metadata, strategy = client._parse_json(raw)
+        self.assertEqual(strategy, PARSE_STRATEGY_JSON)
+        self.assertEqual(metadata[key], "hello")
+
+    def test_strategy_repaired_on_trailing_comma(self):
+        client = self._build_client()
+        key = list(METADATA_SCHEMA.keys())[0]
+        raw = "{" f"\"{key}\": \"v\"," "}"
+        metadata, strategy = client._parse_json(raw)
+        self.assertEqual(strategy, PARSE_STRATEGY_REPAIRED)
+        self.assertEqual(metadata[key], "v")
+
+    def test_strategy_regex_on_truncated_payload(self):
+        client = self._build_client()
+        key_a = list(METADATA_SCHEMA.keys())[0]
+        key_b = list(METADATA_SCHEMA.keys())[1]
+        raw = "{" f"\"{key_a}\": \"x\", \"{key_b}\": 2020, \"unknown\": "
+        metadata, strategy = client._parse_json(raw)
+        self.assertEqual(strategy, PARSE_STRATEGY_REGEX)
+        self.assertEqual(metadata[key_a], "x")
+        self.assertEqual(metadata[key_b], 2020)
+
+    def test_strategy_failed_on_pure_garbage(self):
+        client = self._build_client()
+        metadata, strategy = client._parse_json("not json at all")
+        self.assertEqual(strategy, PARSE_STRATEGY_FAILED)
+        self.assertEqual(metadata, {})
 
 
 if __name__ == "__main__":

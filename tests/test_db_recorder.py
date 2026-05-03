@@ -47,9 +47,10 @@ def _make_engine():
 
 
 class _StubClassifier:
-    def __init__(self, payload):
+    def __init__(self, payload, trace=None):
         self._payload = payload
         self.calls = 0
+        self.last_extraction_trace = trace
 
     def process_multi_page_document(self, archive_name, image_paths):
         self.calls += 1
@@ -176,6 +177,66 @@ class TestBatchRecorder(unittest.TestCase):
         self.assertEqual(results[0]["status"], "success")
         # 计数器记录到了失败
         self.assertGreater(recorder.db_error_count, 0)
+
+    def test_review_status_set_to_needs_review_when_note_marker(self):
+        recorder = self._make_recorder()
+        payload_with_warning = dict(self.payload)
+        payload_with_warning["备注"] = "【待核查】简报题名疑为文学性标题"
+        processor = BatchProcessor(_StubClassifier(payload_with_warning), recorder=recorder)
+        processor.batch_process_archives(
+            self.archive_dict, output_dir=str(self.tmp_root / "out")
+        )
+
+        with self.Session() as session:
+            archive = session.scalar(select(ArchiveRecord))
+            self.assertEqual(archive.review_status, "needs_review")
+
+    def test_review_status_stays_not_required_without_marker(self):
+        recorder = self._make_recorder()
+        processor = BatchProcessor(_StubClassifier(self.payload), recorder=recorder)
+        processor.batch_process_archives(
+            self.archive_dict, output_dir=str(self.tmp_root / "out")
+        )
+
+        with self.Session() as session:
+            archive = session.scalar(select(ArchiveRecord))
+            self.assertEqual(archive.review_status, "not_required")
+
+    def test_llm_trace_persisted_to_archive_columns(self):
+        from infrastructure.llm_client import ExtractionTrace, PARSE_STRATEGY_REPAIRED
+
+        trace = ExtractionTrace(
+            raw_response='{"题名": "v",}',
+            cleaned_response='{"题名": "v",}',
+            parse_strategy=PARSE_STRATEGY_REPAIRED,
+        )
+        recorder = self._make_recorder()
+        classifier = _StubClassifier(self.payload, trace=trace)
+        processor = BatchProcessor(classifier, recorder=recorder)
+        processor.batch_process_archives(
+            self.archive_dict, output_dir=str(self.tmp_root / "out")
+        )
+
+        with self.Session() as session:
+            archive = session.scalar(select(ArchiveRecord))
+            self.assertEqual(archive.llm_raw_response, '{"题名": "v",}')
+            self.assertEqual(archive.llm_cleaned_response, '{"题名": "v",}')
+            self.assertEqual(archive.llm_parse_strategy, "repaired")
+
+    def test_llm_trace_absent_leaves_columns_null(self):
+        recorder = self._make_recorder()
+        # 显式不带 trace
+        classifier = _StubClassifier(self.payload, trace=None)
+        processor = BatchProcessor(classifier, recorder=recorder)
+        processor.batch_process_archives(
+            self.archive_dict, output_dir=str(self.tmp_root / "out")
+        )
+
+        with self.Session() as session:
+            archive = session.scalar(select(ArchiveRecord))
+            self.assertIsNone(archive.llm_raw_response)
+            self.assertIsNone(archive.llm_cleaned_response)
+            self.assertIsNone(archive.llm_parse_strategy)
 
 
 if __name__ == "__main__":

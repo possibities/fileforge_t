@@ -1,0 +1,31 @@
+# PostgreSQL 16 本地开发实例。
+# 用法:
+#   docker compose up -d           启动
+#   docker compose exec db psql -U fileforge fileforge   连接
+#   docker compose down            停止(保留数据)
+#   docker compose down -v         停止并清除数据卷
+#
+# 配合 .env.example 中的连接串使用。
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: fileforge-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fileforge
+      POSTGRES_PASSWORD: fileforge_local
+      POSTGRES_DB: fileforge
+      # 仅用于本地开发；生产请改用强密码并移出版本库
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fileforge -d fileforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

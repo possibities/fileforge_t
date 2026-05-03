@@ -10,7 +10,8 @@
 import json
 import logging
 import re
-from typing import Any, Dict
+from dataclasses import dataclass
+from typing import Any, Dict, Optional, Tuple
 
 try:
     from openai import OpenAI
@@ -21,6 +22,27 @@ from config.config import Config
 from constants import METADATA_SCHEMA
 
 logger = logging.getLogger(__name__)
+
+
+# 解析路径标签，与数据库列 archive_records.llm_parse_strategy 取值一致
+PARSE_STRATEGY_JSON = "json"
+PARSE_STRATEGY_REPAIRED = "repaired"
+PARSE_STRATEGY_REGEX = "regex"
+PARSE_STRATEGY_FAILED = "failed"
+
+
+@dataclass
+class ExtractionTrace:
+    """单次 extract_metadata 调用的可审计快照。
+
+    raw_response       — vLLM 返回的原始 message.content
+    cleaned_response   — 去掉 ``` 包裹和 {...} 截取后的字符串
+    parse_strategy     — json/repaired/regex/failed,与数据契约 §4.4 对齐
+    """
+
+    raw_response: str
+    cleaned_response: str
+    parse_strategy: str
 
 
 class LlmClient:
@@ -58,10 +80,15 @@ class LlmClient:
         )
         logger.info("[LLM初始化] OpenAI 客户端就绪")
 
+        # 最近一次 extract_metadata 调用的可审计快照；
+        # 调用方(classifier→batch_processor→recorder)可读后落库。
+        self.last_trace: Optional[ExtractionTrace] = None
+
     # ── 公开接口 ──────────────────────────────────────────────────────────────
 
     def extract_metadata(self, ocr_text: str, prompt: str) -> Dict:
         logger.info("[LLM] 正在分析文本并提取元数据...")
+        self.last_trace = None
         if not ocr_text or not ocr_text.strip():
             logger.warning("[LLM警告] OCR文本为空，跳过LLM提取")
             return {}
@@ -72,20 +99,30 @@ class LlmClient:
 
             logger.info(f"[LLM响应] 原始响应长度: {len(response)} 字符")
 
-            response = self._clean_response(response)
+            cleaned = self._clean_response(response)
 
             preview = (
-                response[:Config.LLM_RESPONSE_PREVIEW_LENGTH]
-                if len(response) > Config.LLM_RESPONSE_PREVIEW_LENGTH
-                else response
+                cleaned[:Config.LLM_RESPONSE_PREVIEW_LENGTH]
+                if len(cleaned) > Config.LLM_RESPONSE_PREVIEW_LENGTH
+                else cleaned
             )
             logger.info(f"[JSON清理后] {preview}...")
 
-            metadata = self._parse_json(response)
+            metadata, strategy = self._parse_json(cleaned)
+            self.last_trace = ExtractionTrace(
+                raw_response=response,
+                cleaned_response=cleaned,
+                parse_strategy=strategy,
+            )
             return metadata
 
         except Exception as e:
             logger.exception(f"[LLM错误] {str(e)}")
+            self.last_trace = ExtractionTrace(
+                raw_response="",
+                cleaned_response="",
+                parse_strategy=PARSE_STRATEGY_FAILED,
+            )
             return {}
 
     def rewrite_briefing_title(
@@ -118,7 +155,7 @@ class LlmClient:
         try:
             response = self._generate(formatted)
             response = self._clean_response(response)
-            parsed = self._parse_json(response)
+            parsed, _ = self._parse_json(response)
         except Exception as e:
             logger.exception(f"[LLM重写异常] {e}")
             return ""
@@ -183,17 +220,23 @@ class LlmClient:
             response = response[start_idx:end_idx + 1]
         return response.strip()
 
-    def _parse_json(self, response: str) -> Dict:
+    def _parse_json(self, response: str) -> Tuple[Dict, str]:
         """
-        解析 LLM 返回的 JSON 响应。
+        解析 LLM 返回的 JSON 响应,返回 (metadata, parse_strategy)。
 
         vLLM `response_format={"type": "json_object"}` 保证返回合法 JSON，
         但为防 guided JSON 失效或超长截断，保留一次引号/尾逗号修复重试。
         修复仍失败时，降级为按字段逐个抽取的兜底解析。
+
+        parse_strategy 取值与数据契约 §4.4 的 archive_records.llm_parse_strategy 列对齐:
+          - json:     首次 json.loads 直接成功
+          - repaired: 修复引号/尾逗号后 json.loads 成功
+          - regex:    走逐字段正则兜底成功提取出至少一个字段
+          - failed:   全部失败,返回空 dict
         """
         try:
             metadata = json.loads(response)
-            return self._filter_metadata_keys(metadata)
+            return self._filter_metadata_keys(metadata), PARSE_STRATEGY_JSON
         except json.JSONDecodeError as e:
             logger.warning(f"[JSON解析失败] {str(e)}")
             logger.info("[尝试修复JSON格式...]")
@@ -206,17 +249,17 @@ class LlmClient:
         try:
             metadata = json.loads(fixed)
             logger.info("[修复成功] 成功提取字段")
-            return self._filter_metadata_keys(metadata)
+            return self._filter_metadata_keys(metadata), PARSE_STRATEGY_REPAIRED
         except Exception:
             metadata = self._extract_fields_by_regex(fixed)
             if metadata:
                 logger.info("[JSON兜底] 通过逐字段抽取恢复部分字段")
-                return metadata
+                return metadata, PARSE_STRATEGY_REGEX
             logger.warning("[JSON修复失败] 完整响应:")
             logger.warning("-" * 70)
             logger.warning(response)
             logger.warning("-" * 70)
-            return {}
+            return {}, PARSE_STRATEGY_FAILED
 
     def _filter_metadata_keys(self, metadata: Dict[str, Any]) -> Dict:
         return {k: v for k, v in metadata.items() if k in self.metadata_schema}

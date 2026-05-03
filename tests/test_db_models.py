@@ -162,6 +162,86 @@ class TestDbModels(unittest.TestCase):
             with self.assertRaises(Exception):
                 session.commit()
 
+    def test_archive_pages_unique_constraints(self):
+        with self.Session() as session:
+            project = Project(project_key="pg")
+            session.add(project)
+            session.flush()
+            batch = ProcessingBatch(project_id=project.id, batch_key="bp")
+            session.add(batch)
+            session.flush()
+            archive = ArchiveRecord(
+                project_id=project.id,
+                batch_id=batch.id,
+                archive_key="a",
+                archive_name="a",
+            )
+            session.add(archive)
+            session.flush()
+            session.add(
+                ArchivePage(
+                    archive_id=archive.id,
+                    page_no=1,
+                    image_path="/in/a/0001.jpg",
+                    image_name="0001.jpg",
+                )
+            )
+            session.commit()
+
+            # 重复 page_no 必须报错
+            session.add(
+                ArchivePage(
+                    archive_id=archive.id,
+                    page_no=1,
+                    image_path="/in/a/duplicate-page-no.jpg",
+                    image_name="duplicate-page-no.jpg",
+                )
+            )
+            with self.assertRaises(Exception):
+                session.commit()
+            session.rollback()
+
+            # 重复 image_path 必须报错
+            session.add(
+                ArchivePage(
+                    archive_id=archive.id,
+                    page_no=99,
+                    image_path="/in/a/0001.jpg",
+                    image_name="0001.jpg",
+                )
+            )
+            with self.assertRaises(Exception):
+                session.commit()
+
+    def test_multiple_null_archive_no_allowed_in_same_project(self):
+        # SQLite 与 PostgreSQL 都允许 partial unique 在 NULL 值上重复
+        with self.Session() as session:
+            project = Project(project_key="np")
+            session.add(project)
+            session.flush()
+            batch = ProcessingBatch(project_id=project.id, batch_key="bn")
+            session.add(batch)
+            session.flush()
+            session.add_all(
+                [
+                    ArchiveRecord(
+                        project_id=project.id,
+                        batch_id=batch.id,
+                        archive_key="x1",
+                        archive_name="x1",
+                        archive_no=None,
+                    ),
+                    ArchiveRecord(
+                        project_id=project.id,
+                        batch_id=batch.id,
+                        archive_key="x2",
+                        archive_name="x2",
+                        archive_no=None,
+                    ),
+                ]
+            )
+            session.commit()  # 不应抛异常
+
 
 if __name__ == "__main__":
     unittest.main()

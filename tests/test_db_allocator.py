@@ -98,6 +98,49 @@ class TestAllocatorParity(unittest.TestCase):
         self.assertIsNone(out[SERIAL_KEY])
         self.assertIsNone(out[DOC_ID_KEY])
 
+    def test_independent_counters_across_dimensions(self):
+        allocator = DatabaseAllocator(
+            session_factory=self.Session, project_id=self.project_id
+        )
+        a = allocator.assign({YEAR_KEY: "2026", CLASS_KEY: "DQL", PERIOD_KEY: "30年"})
+        b = allocator.assign({YEAR_KEY: "2026", CLASS_KEY: "DQL", PERIOD_KEY: "永久"})
+        c = allocator.assign({YEAR_KEY: "2025", CLASS_KEY: "DQL", PERIOD_KEY: "30年"})
+        d = allocator.assign({YEAR_KEY: "2026", CLASS_KEY: "ZHL", PERIOD_KEY: "30年"})
+        # 同一维度第二条仍然 0001+1=0002
+        e = allocator.assign({YEAR_KEY: "2026", CLASS_KEY: "DQL", PERIOD_KEY: "30年"})
+
+        self.assertEqual(a[SERIAL_KEY], "0001")
+        self.assertEqual(b[SERIAL_KEY], "0001")
+        self.assertEqual(c[SERIAL_KEY], "0001")
+        self.assertEqual(d[SERIAL_KEY], "0001")
+        self.assertEqual(e[SERIAL_KEY], "0002")
+
+        self.assertEqual(a[DOC_ID_KEY], "2026-DQL-D30-0001")
+        self.assertEqual(b[DOC_ID_KEY], "2026-DQL-Y-0001")
+        self.assertEqual(c[DOC_ID_KEY], "2025-DQL-D30-0001")
+        self.assertEqual(d[DOC_ID_KEY], "2026-ZHL-D30-0001")
+        self.assertEqual(e[DOC_ID_KEY], "2026-DQL-D30-0002")
+
+    def test_old_year_uses_old_period_codes(self):
+        allocator = DatabaseAllocator(
+            session_factory=self.Session, project_id=self.project_id
+        )
+        # 2006 年（含）以前应使用 Y/C/D 而非 Y/D30/D10
+        result = allocator.assign({YEAR_KEY: "2005", CLASS_KEY: "002", PERIOD_KEY: "长期"})
+        self.assertEqual(result[DOC_ID_KEY], "2005-002-C-0001")
+
+        result2 = allocator.assign({YEAR_KEY: "2006", CLASS_KEY: "001", PERIOD_KEY: "短期"})
+        self.assertEqual(result2[DOC_ID_KEY], "2006-001-D-0001")
+
+    def test_unknown_period_returns_none(self):
+        allocator = DatabaseAllocator(
+            session_factory=self.Session, project_id=self.project_id
+        )
+        # 2007 年起没有 "长期" 这个值
+        result = allocator.assign({YEAR_KEY: "2026", CLASS_KEY: "DQL", PERIOD_KEY: "长期"})
+        self.assertIsNone(result[SERIAL_KEY])
+        self.assertIsNone(result[DOC_ID_KEY])
+
 
 if __name__ == "__main__":
     unittest.main()

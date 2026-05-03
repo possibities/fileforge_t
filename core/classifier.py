@@ -38,6 +38,8 @@ class ArchiveClassifier:
         self.metadata_schema = METADATA_SCHEMA
         self.extraction_prompt = self._build_extraction_prompt()
         self.briefing_rewrite_prompt = self._load_prompt_file("briefing_rewrite.txt")
+        # 暴露最近一次抽取的 LLM trace 给 BatchProcessor → BatchRecorder 落库
+        self.last_extraction_trace = None
 
     # ── 公开接口 ───────────────────────────────────────────────────────────────
 
@@ -50,6 +52,7 @@ class ArchiveClassifier:
         logger.info(f"页数: {len(image_paths)} 页")
         logger.info(f"{'='*70}\n")
 
+        self.last_extraction_trace = None
         ocr_text = self.ocr_client.extract_text_from_images(image_paths)
 
         if not ocr_text:
@@ -80,6 +83,8 @@ class ArchiveClassifier:
     def _extract_metadata_from_text(self, ocr_text: str) -> Dict:
         """使用LLM从OCR文本中提取元数据，并应用规则修正"""
         metadata = self.llm_client.extract_metadata(ocr_text, self.extraction_prompt)
+        # 把 LlmClient 本次调用的 trace 透传出去,允许 None
+        self.last_extraction_trace = getattr(self.llm_client, "last_trace", None)
 
         if not metadata:
             return {}
