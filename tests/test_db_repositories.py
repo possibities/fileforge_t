@@ -253,5 +253,50 @@ class TestUpsertArchiveRerun(unittest.TestCase):
             self.assertEqual(archive.title, "人工修正题名")
 
 
+@unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
+class TestToRelativePosix(unittest.TestCase):
+    """验证 _to_relative_posix:image_path 归一化为相对 input_dir 的 POSIX 路径(数据契约 §4.5)。"""
+
+    def test_under_input_dir_returns_relative_posix(self):
+        from infrastructure.db.repositories import _to_relative_posix
+
+        result = _to_relative_posix(
+            image_path="input_documents/folder/page1.jpg",
+            input_dir="input_documents",
+        )
+        self.assertEqual(result, "folder/page1.jpg")
+
+    def test_input_dir_none_returns_posix_only(self):
+        from infrastructure.db.repositories import _to_relative_posix
+
+        result = _to_relative_posix(
+            image_path=r"some\windows\path.jpg",
+            input_dir=None,
+        )
+        self.assertEqual(result, "some/windows/path.jpg")
+
+    def test_input_dir_empty_returns_posix_only(self):
+        from infrastructure.db.repositories import _to_relative_posix
+
+        result = _to_relative_posix(
+            image_path=r"some\path.jpg",
+            input_dir="",
+        )
+        self.assertEqual(result, "some/path.jpg")
+
+    def test_outside_input_dir_falls_back(self):
+        from infrastructure.db.repositories import _to_relative_posix
+
+        # 两条路径都不存在,但 resolve() 仍把相对路径解析为基于 cwd 的绝对路径,
+        # 在 cwd 下 outside_root 与 input_root 是同级目录而非父子关系,
+        # relative_to 会抛 ValueError,触发退化分支。
+        result = _to_relative_posix(
+            image_path="outside_root/img.jpg",
+            input_dir="input_root",
+        )
+        # 退化为原始路径(反斜杠转正斜杠)
+        self.assertEqual(result, "outside_root/img.jpg")
+
+
 if __name__ == "__main__":
     unittest.main()

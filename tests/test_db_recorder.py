@@ -21,6 +21,7 @@ try:
     from sqlalchemy.pool import StaticPool
 
     from infrastructure.db.models import (
+        ArchivePage,
         ArchiveRecord,
         Base,
         ProcessingBatch,
@@ -237,6 +238,21 @@ class TestBatchRecorder(unittest.TestCase):
             self.assertIsNone(archive.llm_raw_response)
             self.assertIsNone(archive.llm_cleaned_response)
             self.assertIsNone(archive.llm_parse_strategy)
+
+    def test_image_path_stored_as_relative_posix(self):
+        """数据契约 §4.5:archive_pages.image_path 必须是相对 input_dir 的 POSIX 路径。"""
+        recorder = self._make_recorder()
+        processor = BatchProcessor(_StubClassifier(self.payload), recorder=recorder)
+        processor.batch_process_archives(
+            self.archive_dict, output_dir=str(self.tmp_root / "out")
+        )
+
+        with self.Session() as session:
+            page = session.scalar(select(ArchivePage))
+            self.assertIsNotNone(page)
+            self.assertEqual(page.image_path, "demo_archive/0001.jpg")
+            self.assertEqual(page.image_name, "0001.jpg")
+            self.assertEqual(page.page_no, 1)
 
 
 if __name__ == "__main__":

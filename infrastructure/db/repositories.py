@@ -249,7 +249,17 @@ def upsert_pages(
     *,
     archive_id: int,
     image_paths: Iterable[str],
+    input_dir: Optional[str] = None,
 ) -> None:
+    """Upsert ArchivePage 行。
+
+    image_path 列存归一化后的相对 input_dir 的 POSIX 路径(数据契约 §4.5),
+    避免绝对路径在跨机器重跑或目录搬迁时破坏 (archive_id, image_path) 唯一约束。
+    file_hash / file_size 仍按原始绝对路径读盘,与归一化解耦。
+
+    input_dir 缺省或路径不在其下时,退化为"原始路径转 POSIX 风格"。退化分支
+    会丢失幂等保护,因此在外层(BatchRecorder)调用时应始终传入 input_dir。
+    """
     existing = {
         page.image_path: page
         for page in session.scalars(
@@ -262,9 +272,10 @@ def upsert_pages(
         image_name = path_obj.name
         file_hash = _hash_file_safely(path_obj)
         file_size = _stat_size_safely(path_obj)
+        stored_path = _to_relative_posix(image_path, input_dir)
 
-        if image_path in existing:
-            page = existing[image_path]
+        if stored_path in existing:
+            page = existing[stored_path]
             page.page_no = idx
             page.image_name = image_name
             if file_hash:
@@ -276,12 +287,35 @@ def upsert_pages(
                 ArchivePage(
                     archive_id=archive_id,
                     page_no=idx,
-                    image_path=image_path,
+                    image_path=stored_path,
                     image_name=image_name,
                     file_hash=file_hash,
                     file_size=file_size,
                 )
             )
+
+
+def _to_relative_posix(image_path: str, input_dir: Optional[str]) -> str:
+    """归一化 image_path 为相对 input_dir 的 POSIX 风格路径。
+
+    退化策略:
+      - input_dir 为 None/空 → 仅把反斜杠换为正斜杠。
+      - image_path 不在 input_dir 下(relative_to 抛 ValueError) → 同上,且写日志。
+
+    退化分支会丢失"跨机器搬目录仍幂等"的保证,但保证不会因归一化失败而崩溃管线。
+    """
+    if not input_dir:
+        return image_path.replace("\\", "/")
+    try:
+        rel = Path(image_path).resolve().relative_to(Path(input_dir).resolve())
+        return rel.as_posix()
+    except ValueError:
+        logger.warning(
+            "[DB] image_path 不在 input_dir 下,退化为原始路径(POSIX): input_dir=%s path=%s",
+            input_dir,
+            image_path,
+        )
+        return image_path.replace("\\", "/")
 
 
 def _hash_file_safely(path: Path) -> Optional[str]:

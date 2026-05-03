@@ -185,7 +185,10 @@ class BatchRecorder:
                     processed_time=processed_time,
                 )
                 repositories.upsert_pages(
-                    session, archive_id=archive.id, image_paths=image_paths
+                    session,
+                    archive_id=archive.id,
+                    image_paths=image_paths,
+                    input_dir=self._input_dir,
                 )
                 job = repositories.record_job_start(
                     session, batch_id=self._state.batch_id, archive_id=archive.id
