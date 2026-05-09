@@ -852,3 +852,73 @@ class TestGetArchiveDetail(unittest.TestCase):
             result = queries.get_archive_detail(session, archive_id=archive_id)
         assert result is not None
         self.assertEqual(len(dataclasses.fields(result)), 45)
+
+
+@unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
+class TestListRevisions(unittest.TestCase):
+    def setUp(self):
+        self.engine = _make_engine()
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
+        with self.Session() as session:
+            self.ids = _seed_query_fixtures(session)
+            session.commit()
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def test_returns_empty_when_archive_has_no_revisions(self):
+        with self.Session() as session:
+            result = queries.list_revisions(
+                session, archive_id=self.ids["archive_ids"][0]
+            )
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.total, 0)
+
+    def test_returns_three_revisions_for_corrected_archive(self):
+        archive_id = self.ids["archive_ids"][5]
+        with self.Session() as session:
+            result = queries.list_revisions(session, archive_id=archive_id)
+        self.assertEqual(result.total, 3)
+
+    def test_revisions_sorted_revision_no_desc(self):
+        archive_id = self.ids["archive_ids"][5]
+        with self.Session() as session:
+            result = queries.list_revisions(session, archive_id=archive_id)
+        revision_nos = [r.revision_no for r in result.items]
+        # revision_no=2 在前(1 行),revision_no=1 在后(2 行)
+        self.assertEqual(revision_nos[0], 2)
+        self.assertEqual(revision_nos[1], 1)
+        self.assertEqual(revision_nos[2], 1)
+
+    def test_revision_carries_field_key_and_old_new_values(self):
+        archive_id = self.ids["archive_ids"][5]
+        with self.Session() as session:
+            result = queries.list_revisions(session, archive_id=archive_id)
+        # 找 revision_no=1 题名 那条
+        rev = next(
+            (r for r in result.items if r.revision_no == 1 and r.field_key == "题名"),
+            None,
+        )
+        self.assertIsNotNone(rev)
+        assert rev is not None
+        self.assertEqual(rev.field_column, "title")
+        self.assertEqual(rev.old_value, "原始规则题名")
+        self.assertEqual(rev.new_value, "人工修正过的档案")
+        self.assertEqual(rev.reason, "manual_correction_v1")
+
+    def test_pagination(self):
+        archive_id = self.ids["archive_ids"][5]
+        with self.Session() as session:
+            page1 = queries.list_revisions(
+                session, archive_id=archive_id, page=1, page_size=2
+            )
+            page2 = queries.list_revisions(
+                session, archive_id=archive_id, page=2, page_size=2
+            )
+        self.assertEqual(len(page1.items), 2)
+        self.assertTrue(page1.has_next)
+        self.assertEqual(len(page2.items), 1)
+        self.assertFalse(page2.has_next)
+        self.assertEqual(page2.total, 3)

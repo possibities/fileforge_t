@@ -581,6 +581,56 @@ def get_archive_detail(
     return _archive_to_detail(archive, pages)
 
 
+def _revision_to_row(rev: MetadataRevision) -> RevisionRow:
+    return RevisionRow(
+        id=rev.id,
+        archive_id=rev.archive_id,
+        revision_no=rev.revision_no,
+        field_key=rev.field_key,
+        field_column=rev.field_column,
+        old_value=rev.old_value,
+        new_value=rev.new_value,
+        reason=rev.reason,
+        created_by=rev.created_by,
+        created_at=rev.created_at,
+    )
+
+
+def list_revisions(
+    session: Session,
+    *,
+    archive_id: int,
+    page: int = 1,
+    page_size: int = 50,
+) -> "ListResult[RevisionRow]":
+    """按 archive_id 列出修正记录,默认 revision_no DESC, id DESC。"""
+    _validate_pagination(page, page_size)
+
+    base = select(MetadataRevision).where(MetadataRevision.archive_id == archive_id)
+
+    total = session.scalar(
+        select(func.count()).select_from(base.subquery())
+    ) or 0
+
+    rows = session.scalars(
+        _paginate(
+            base.order_by(
+                MetadataRevision.revision_no.desc(),
+                MetadataRevision.id.desc(),
+            ),
+            page=page,
+            page_size=page_size,
+        )
+    ).all()
+
+    return _build_list_result(
+        items=[_revision_to_row(r) for r in rows],
+        total=int(total),
+        page=page,
+        page_size=page_size,
+    )
+
+
 __all__ = [
     "ListResult",
     "ArchiveFilter",
@@ -595,4 +645,5 @@ __all__ = [
     "get_batch_detail",
     "list_archives",
     "get_archive_detail",
+    "list_revisions",
 ]
