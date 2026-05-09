@@ -540,3 +540,236 @@ class TestGetBatchDetail(unittest.TestCase):
         assert result is not None
         self.assertEqual(result.batch_status, "running")
         self.assertEqual(result.failure_breakdown, {})
+
+
+@unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
+class TestListArchives(unittest.TestCase):
+    def setUp(self):
+        self.engine = _make_engine()
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
+        with self.Session() as session:
+            self.ids = _seed_query_fixtures(session)
+            session.commit()
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    # ── 基础与排序 ──
+    def test_unknown_batch_returns_empty(self):
+        with self.Session() as session:
+            result = queries.list_archives(session, batch_id=99999)
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.total, 0)
+
+    def test_returns_six_archives_for_batch_a(self):
+        with self.Session() as session:
+            result = queries.list_archives(session, batch_id=self.ids["batch_a_id"])
+        self.assertEqual(result.total, 6)
+        self.assertEqual(len(result.items), 6)
+
+    def test_sorted_by_archive_no_asc_nulls_last(self):
+        with self.Session() as session:
+            result = queries.list_archives(session, batch_id=self.ids["batch_a_id"])
+        # 有 archive_no 的(2025-DQL-Y-0001, 2025-ZHL-D30-0001, 2025-ZHL-D30-0002) 在前,
+        # 没有 archive_no 的(ar2/ar3/ar4) 排后面
+        archive_nos = [a.archive_no for a in result.items]
+        non_null_count = sum(1 for n in archive_nos if n is not None)
+        self.assertEqual(non_null_count, 3)
+        self.assertEqual(archive_nos[:3], [
+            "2025-DQL-Y-0001", "2025-ZHL-D30-0001", "2025-ZHL-D30-0002",
+        ])
+
+    # ── filter 各字段 ──
+    def test_filter_archive_year_int(self):
+        with self.Session() as session:
+            result = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                filter=queries.ArchiveFilter(archive_year=2025),
+            )
+        self.assertEqual(result.total, 4)
+        for a in result.items:
+            self.assertEqual(a.archive_year, "2025")
+
+    def test_filter_classification_code_in(self):
+        with self.Session() as session:
+            result = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                filter=queries.ArchiveFilter(classification_code=["DQL", "YWL"]),
+            )
+        self.assertEqual(result.total, 2)
+        codes = sorted(a.classification_code for a in result.items)
+        self.assertEqual(codes, ["DQL", "YWL"])
+
+    def test_filter_retention_period_in(self):
+        with self.Session() as session:
+            result = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                filter=queries.ArchiveFilter(retention_period=["10年"]),
+            )
+        self.assertEqual(result.total, 2)
+
+    def test_filter_processing_status_success(self):
+        with self.Session() as session:
+            result = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                filter=queries.ArchiveFilter(processing_status=["success"]),
+            )
+        self.assertEqual(result.total, 2)
+
+    def test_filter_review_status_needs_review(self):
+        with self.Session() as session:
+            result = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                filter=queries.ArchiveFilter(review_status=["needs_review"]),
+            )
+        self.assertEqual(result.total, 1)
+        self.assertEqual(result.items[0].archive_key, "ar1")
+
+    def test_filter_correction_status_corrected(self):
+        with self.Session() as session:
+            result = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                filter=queries.ArchiveFilter(correction_status="corrected"),
+            )
+        self.assertEqual(result.total, 1)
+        self.assertEqual(result.items[0].archive_key, "ar5")
+
+    def test_filter_archive_no_exact(self):
+        with self.Session() as session:
+            result = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                filter=queries.ArchiveFilter(archive_no="2025-DQL-Y-0001"),
+            )
+        self.assertEqual(result.total, 1)
+
+    def test_filter_title_like(self):
+        with self.Session() as session:
+            result = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                filter=queries.ArchiveFilter(title_like="needs_review"),
+            )
+        self.assertEqual(result.total, 1)
+        self.assertEqual(result.items[0].archive_key, "ar1")
+
+    def test_filter_responsible_party_like(self):
+        with self.Session() as session:
+            result = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                filter=queries.ArchiveFilter(responsible_party_like="测试单位甲"),
+            )
+        self.assertEqual(result.total, 2)
+
+    def test_filter_error_code_in(self):
+        with self.Session() as session:
+            result = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                filter=queries.ArchiveFilter(error_code=["LLM_PARSE_FAIL"]),
+            )
+        self.assertEqual(result.total, 1)
+        self.assertEqual(result.items[0].archive_key, "ar2")
+
+    def test_filter_openness_status_passes(self):
+        # seed 没有 openness_status 数据,验证 filter 不会误命中
+        with self.Session() as session:
+            result = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                filter=queries.ArchiveFilter(openness_status="开放"),
+            )
+        self.assertEqual(result.total, 0)
+
+    def test_filter_item_no_exact(self):
+        with self.Session() as session:
+            result = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                filter=queries.ArchiveFilter(item_no="0001"),
+            )
+        # 两个档案都是 0001(不同 archive_year/classification 组合下序号独立)
+        self.assertEqual(result.total, 2)
+
+    # ── filter 等价规则 ──
+    def test_filter_empty_iter_equiv_to_none(self):
+        with self.Session() as session:
+            result_with_empty = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                filter=queries.ArchiveFilter(classification_code=[]),
+            )
+            result_without = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+            )
+        self.assertEqual(result_with_empty.total, result_without.total)
+
+    def test_filter_empty_string_like_equiv_to_none(self):
+        with self.Session() as session:
+            result_with_empty = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                filter=queries.ArchiveFilter(title_like=""),
+            )
+            result_without = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+            )
+        self.assertEqual(result_with_empty.total, result_without.total)
+
+    # ── 多字段组合 ──
+    def test_multiple_filters_combine_with_and(self):
+        with self.Session() as session:
+            result = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                filter=queries.ArchiveFilter(
+                    archive_year=2025,
+                    classification_code=["ZHL"],
+                    processing_status=["success"],
+                ),
+            )
+        self.assertEqual(result.total, 1)
+        self.assertEqual(result.items[0].archive_key, "ar0")
+
+    # ── 分页 ──
+    def test_pagination_page_size_2(self):
+        with self.Session() as session:
+            page1 = queries.list_archives(
+                session, batch_id=self.ids["batch_a_id"], page=1, page_size=2
+            )
+            page2 = queries.list_archives(
+                session, batch_id=self.ids["batch_a_id"], page=2, page_size=2
+            )
+            page4 = queries.list_archives(
+                session, batch_id=self.ids["batch_a_id"], page=4, page_size=2
+            )
+        self.assertEqual(len(page1.items), 2)
+        self.assertTrue(page1.has_next)
+        self.assertEqual(len(page2.items), 2)
+        self.assertTrue(page2.has_next)
+        self.assertEqual(len(page4.items), 0)
+        self.assertFalse(page4.has_next)
+        self.assertEqual(page4.total, 6)
+
+    # ── ArchiveSummary 字段验证 ──
+    def test_summary_excludes_three_snapshots(self):
+        with self.Session() as session:
+            result = queries.list_archives(session, batch_id=self.ids["batch_a_id"])
+        summary = result.items[0]
+        with self.assertRaises(AttributeError):
+            _ = summary.final_metadata  # type: ignore[attr-defined]
+        with self.assertRaises(AttributeError):
+            _ = summary.llm_metadata  # type: ignore[attr-defined]
+        with self.assertRaises(AttributeError):
+            _ = summary.pages  # type: ignore[attr-defined]

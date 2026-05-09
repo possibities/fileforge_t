@@ -369,6 +369,132 @@ def get_batch_detail(
     )
 
 
+def _archive_to_summary(ar: ArchiveRecord) -> ArchiveSummary:
+    return ArchiveSummary(
+        id=ar.id,
+        project_id=ar.project_id,
+        batch_id=ar.batch_id,
+        archive_key=ar.archive_key,
+        archive_name=ar.archive_name,
+        page_count=ar.page_count,
+        processing_status=ar.processing_status,
+        review_status=ar.review_status,
+        correction_status=ar.correction_status,
+        error_code=ar.error_code,
+        error_message=ar.error_message,
+        archive_year=ar.archive_year,
+        classification_code=ar.classification_code,
+        classification_name=ar.classification_name,
+        retention_period=ar.retention_period,
+        retention_period_code=ar.retention_period_code,
+        responsible_party=ar.responsible_party,
+        document_number=ar.document_number,
+        title=ar.title,
+        document_date=ar.document_date,
+        openness_status=ar.openness_status,
+        archive_no=ar.archive_no,
+        item_no=ar.item_no,
+        fonds_unit_name=ar.fonds_unit_name,
+        processed_time=ar.processed_time,
+        created_at=ar.created_at,
+        updated_at=ar.updated_at,
+    )
+
+
+def _apply_archive_filter(stmt: Select, f: ArchiveFilter) -> Select:
+    """把 ArchiveFilter 12 字段映射到 SQL where 子句。
+
+    约定(spec §3.2):
+      - None 值不附加条件
+      - Iterable 字段空集等价于 None
+      - *_like 字段空字符串等价于 None
+      - archive_year 是 int 输入,DB 存 String → 转 str(value)
+    """
+    if f.archive_year is not None:
+        stmt = stmt.where(ArchiveRecord.archive_year == str(f.archive_year))
+
+    classification_codes = list(f.classification_code) if f.classification_code else []
+    if classification_codes:
+        stmt = stmt.where(ArchiveRecord.classification_code.in_(classification_codes))
+
+    retention_periods = list(f.retention_period) if f.retention_period else []
+    if retention_periods:
+        stmt = stmt.where(ArchiveRecord.retention_period.in_(retention_periods))
+
+    if f.openness_status:
+        stmt = stmt.where(ArchiveRecord.openness_status == f.openness_status)
+
+    processing_statuses = list(f.processing_status) if f.processing_status else []
+    if processing_statuses:
+        stmt = stmt.where(ArchiveRecord.processing_status.in_(processing_statuses))
+
+    review_statuses = list(f.review_status) if f.review_status else []
+    if review_statuses:
+        stmt = stmt.where(ArchiveRecord.review_status.in_(review_statuses))
+
+    if f.correction_status:
+        stmt = stmt.where(ArchiveRecord.correction_status == f.correction_status)
+
+    if f.archive_no:
+        stmt = stmt.where(ArchiveRecord.archive_no == f.archive_no)
+
+    if f.item_no:
+        stmt = stmt.where(ArchiveRecord.item_no == f.item_no)
+
+    if f.title_like:
+        stmt = stmt.where(ArchiveRecord.title.ilike(f"%{f.title_like}%"))
+
+    if f.responsible_party_like:
+        stmt = stmt.where(
+            ArchiveRecord.responsible_party.ilike(f"%{f.responsible_party_like}%")
+        )
+
+    error_codes = list(f.error_code) if f.error_code else []
+    if error_codes:
+        stmt = stmt.where(ArchiveRecord.error_code.in_(error_codes))
+
+    return stmt
+
+
+def list_archives(
+    session: Session,
+    *,
+    batch_id: int,
+    filter: Optional[ArchiveFilter] = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> "ListResult[ArchiveSummary]":
+    """按 batch_id 列出档案,支持 12 字段过滤,默认按 archive_no/item_no ASC NULLS LAST 排序。"""
+    _validate_pagination(page, page_size)
+
+    base = select(ArchiveRecord).where(ArchiveRecord.batch_id == batch_id)
+    if filter is not None:
+        base = _apply_archive_filter(base, filter)
+
+    total = session.scalar(
+        select(func.count()).select_from(base.subquery())
+    ) or 0
+
+    rows = session.scalars(
+        _paginate(
+            base.order_by(
+                ArchiveRecord.archive_no.asc().nullslast(),
+                ArchiveRecord.item_no.asc().nullslast(),
+                ArchiveRecord.id.asc(),
+            ),
+            page=page,
+            page_size=page_size,
+        )
+    ).all()
+
+    return _build_list_result(
+        items=[_archive_to_summary(ar) for ar in rows],
+        total=int(total),
+        page=page,
+        page_size=page_size,
+    )
+
+
 __all__ = [
     "ListResult",
     "ArchiveFilter",
@@ -381,4 +507,5 @@ __all__ = [
     "AuditLogRow",
     "list_batches",
     "get_batch_detail",
+    "list_archives",
 ]
