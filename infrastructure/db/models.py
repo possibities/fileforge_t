@@ -46,6 +46,8 @@ PROCESSING_STATUS = ("pending", "running", "success", "failed", "error")
 REVIEW_STATUS = ("not_required", "needs_review", "in_review", "confirmed")
 CORRECTION_STATUS = ("none", "corrected")
 LLM_PARSE_STRATEGY = ("json", "repaired", "regex", "failed")
+ORGANIZATION_STATUS = ("active", "disabled")
+APP_USER_STATUS = ("active", "disabled")
 
 
 def _ts_col(*, server_default: bool = True) -> Mapped[datetime]:
@@ -430,6 +432,115 @@ class AuditLog(Base):
     )
 
 
+# ── 人员/权限(阶段 2 数据库基础后台) ───────────────────────────────────────
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(
+        Enum(*ORGANIZATION_STATUS, name="organization_status", native_enum=False, length=32),
+        nullable=False,
+        server_default="active",
+    )
+    created_at: Mapped[datetime] = _ts_col()
+    updated_at: Mapped[datetime] = _ts_col()
+
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_organizations_name"),
+        Index("ix_organizations_status", "status"),
+    )
+
+
+class AppUser(Base):
+    __tablename__ = "app_users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    organization_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=True
+    )
+    username: Mapped[str] = mapped_column(String(128), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(
+        Enum(*APP_USER_STATUS, name="app_user_status", native_enum=False, length=32),
+        nullable=False,
+        server_default="active",
+    )
+    last_login_at: Mapped[Optional[datetime]] = _ts_col_optional()
+    created_at: Mapped[datetime] = _ts_col()
+    updated_at: Mapped[datetime] = _ts_col()
+
+    organization: Mapped[Optional[Organization]] = relationship(Organization)
+
+    __table_args__ = (
+        UniqueConstraint("username", name="uq_app_users_username"),
+        Index("ix_app_users_status", "status"),
+        Index("ix_app_users_organization", "organization_id"),
+    )
+
+
+class Role(Base):
+    __tablename__ = "roles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = _ts_col()
+
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_roles_code"),
+        Index("ix_roles_code", "code"),
+    )
+
+
+class Permission(Base):
+    __tablename__ = "permissions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = _ts_col()
+
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_permissions_code"),
+        Index("ix_permissions_code", "code"),
+    )
+
+
+class UserRole(Base):
+    __tablename__ = "user_roles"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("app_users.id", ondelete="CASCADE"), primary_key=True
+    )
+    role_id: Mapped[int] = mapped_column(
+        ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = _ts_col()
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "role_id", name="uq_user_roles_user_role"),
+    )
+
+
+class RolePermission(Base):
+    __tablename__ = "role_permissions"
+
+    role_id: Mapped[int] = mapped_column(
+        ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
+    )
+    permission_id: Mapped[int] = mapped_column(
+        ForeignKey("permissions.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = _ts_col()
+
+    __table_args__ = (
+        UniqueConstraint("role_id", "permission_id", name="uq_role_permissions_role_permission"),
+    )
+
+
 __all__ = [
     "Base",
     "JsonDoc",
@@ -439,6 +550,8 @@ __all__ = [
     "REVIEW_STATUS",
     "CORRECTION_STATUS",
     "LLM_PARSE_STRATEGY",
+    "ORGANIZATION_STATUS",
+    "APP_USER_STATUS",
     "Project",
     "ProcessingBatch",
     "ArchiveRecord",
@@ -449,4 +562,10 @@ __all__ = [
     "ExportFile",
     "MetadataRevision",
     "AuditLog",
+    "Organization",
+    "AppUser",
+    "Role",
+    "Permission",
+    "UserRole",
+    "RolePermission",
 ]
