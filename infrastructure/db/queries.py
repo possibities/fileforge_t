@@ -495,6 +495,92 @@ def list_archives(
     )
 
 
+def _page_to_dataclass(p: ArchivePageModel) -> ArchivePage:
+    return ArchivePage(
+        id=p.id,
+        page_no=p.page_no,
+        image_path=p.image_path,
+        image_name=p.image_name,
+        file_hash=p.file_hash,
+        file_size=p.file_size,
+        ocr_text=p.ocr_text,
+        ocr_avg_confidence=p.ocr_avg_confidence,
+        ocr_low_conf_count=p.ocr_low_conf_count,
+        ocr_variant=p.ocr_variant,
+        created_at=p.created_at,
+    )
+
+
+def _archive_to_detail(ar: ArchiveRecord, pages: list[ArchivePage]) -> ArchiveDetail:
+    return ArchiveDetail(
+        id=ar.id,
+        project_id=ar.project_id,
+        batch_id=ar.batch_id,
+        archive_key=ar.archive_key,
+        archive_name=ar.archive_name,
+        page_count=ar.page_count,
+        processing_status=ar.processing_status,
+        review_status=ar.review_status,
+        correction_status=ar.correction_status,
+        error_code=ar.error_code,
+        error_message=ar.error_message,
+        archive_year=ar.archive_year,
+        classification_code=ar.classification_code,
+        classification_name=ar.classification_name,
+        retention_period=ar.retention_period,
+        retention_period_code=ar.retention_period_code,
+        responsible_party=ar.responsible_party,
+        document_number=ar.document_number,
+        title=ar.title,
+        document_date=ar.document_date,
+        openness_status=ar.openness_status,
+        archive_no=ar.archive_no,
+        item_no=ar.item_no,
+        fonds_unit_name=ar.fonds_unit_name,
+        processed_time=ar.processed_time,
+        created_at=ar.created_at,
+        updated_at=ar.updated_at,
+        archive_folder_name=ar.archive_folder_name,
+        source_folder=ar.source_folder,
+        image_files=list(ar.image_files) if ar.image_files else None,
+        image_names=list(ar.image_names) if ar.image_names else None,
+        result_filename=ar.result_filename,
+        traceback_text=ar.traceback_text,
+        category_code=ar.category_code,
+        security_level=ar.security_level,
+        secret_period=ar.secret_period,
+        openness_delay_reason=ar.openness_delay_reason,
+        digitized_time=ar.digitized_time,
+        llm_metadata=dict(ar.llm_metadata) if ar.llm_metadata else None,
+        rules_metadata=dict(ar.rules_metadata) if ar.rules_metadata else None,
+        final_metadata=dict(ar.final_metadata) if ar.final_metadata else None,
+        llm_raw_response=ar.llm_raw_response,
+        llm_cleaned_response=ar.llm_cleaned_response,
+        llm_parse_strategy=ar.llm_parse_strategy,
+        pages=pages,
+    )
+
+
+def get_archive_detail(
+    session: Session,
+    *,
+    archive_id: int,
+) -> Optional[ArchiveDetail]:
+    """返回档案详情 + 全页面列表。找不到返回 None。"""
+    archive = session.get(ArchiveRecord, archive_id)
+    if archive is None:
+        return None
+
+    page_rows = session.scalars(
+        select(ArchivePageModel)
+        .where(ArchivePageModel.archive_id == archive_id)
+        .order_by(ArchivePageModel.page_no.asc())
+    ).all()
+    pages = [_page_to_dataclass(p) for p in page_rows]
+
+    return _archive_to_detail(archive, pages)
+
+
 __all__ = [
     "ListResult",
     "ArchiveFilter",
@@ -508,4 +594,5 @@ __all__ = [
     "list_batches",
     "get_batch_detail",
     "list_archives",
+    "get_archive_detail",
 ]

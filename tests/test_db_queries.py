@@ -773,3 +773,82 @@ class TestListArchives(unittest.TestCase):
             _ = summary.llm_metadata  # type: ignore[attr-defined]
         with self.assertRaises(AttributeError):
             _ = summary.pages  # type: ignore[attr-defined]
+
+
+@unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
+class TestGetArchiveDetail(unittest.TestCase):
+    def setUp(self):
+        self.engine = _make_engine()
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
+        with self.Session() as session:
+            self.ids = _seed_query_fixtures(session)
+            session.commit()
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def test_returns_none_when_archive_not_found(self):
+        with self.Session() as session:
+            result = queries.get_archive_detail(session, archive_id=99999)
+        self.assertIsNone(result)
+
+    def test_returns_full_archive_detail_with_three_snapshots(self):
+        archive_id = self.ids["archive_ids"][1]  # ar1 with metadata
+        with self.Session() as session:
+            result = queries.get_archive_detail(session, archive_id=archive_id)
+        assert result is not None
+        self.assertEqual(result.archive_key, "ar1")
+        self.assertEqual(result.processing_status, "success")
+        self.assertEqual(result.review_status, "needs_review")
+        # 三快照都暴露
+        self.assertEqual(result.final_metadata, {
+            "题名": "测试档案 needs_review",
+            "备注": "【待核查】简报题名重写失败",
+        })
+        self.assertEqual(result.rules_metadata, {"题名": "测试档案 needs_review"})
+        self.assertEqual(result.llm_metadata, {"题名": "原始 LLM 题名"})
+
+    def test_returns_pages_sorted_by_page_no_asc(self):
+        archive_id = self.ids["archive_ids"][0]
+        with self.Session() as session:
+            result = queries.get_archive_detail(session, archive_id=archive_id)
+        assert result is not None
+        self.assertEqual(len(result.pages), 2)
+        self.assertEqual(result.pages[0].page_no, 1)
+        self.assertEqual(result.pages[1].page_no, 2)
+        self.assertEqual(result.pages[0].image_path, "ar0/page_1.png")
+
+    def test_failed_archive_has_null_metadata_and_error_info(self):
+        archive_id = self.ids["archive_ids"][2]  # ar2 failed
+        with self.Session() as session:
+            result = queries.get_archive_detail(session, archive_id=archive_id)
+        assert result is not None
+        self.assertEqual(result.processing_status, "failed")
+        self.assertIsNone(result.final_metadata)
+        self.assertEqual(result.error_code, "LLM_PARSE_FAIL")
+        self.assertIsNone(result.traceback_text)
+
+    def test_error_archive_has_traceback(self):
+        archive_id = self.ids["archive_ids"][3]
+        with self.Session() as session:
+            result = queries.get_archive_detail(session, archive_id=archive_id)
+        assert result is not None
+        self.assertEqual(result.processing_status, "error")
+        self.assertEqual(result.error_code, "OCR_TIMEOUT")
+        self.assertIsNotNone(result.traceback_text)
+
+    def test_corrected_archive_has_correction_status(self):
+        archive_id = self.ids["archive_ids"][5]
+        with self.Session() as session:
+            result = queries.get_archive_detail(session, archive_id=archive_id)
+        assert result is not None
+        self.assertEqual(result.correction_status, "corrected")
+
+    def test_detail_field_count_is_45(self):
+        archive_id = self.ids["archive_ids"][0]
+        with self.Session() as session:
+            result = queries.get_archive_detail(session, archive_id=archive_id)
+        assert result is not None
+        self.assertEqual(len(dataclasses.fields(result)), 45)
