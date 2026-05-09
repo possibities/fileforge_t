@@ -200,11 +200,28 @@ def _cmd_archives_show(args, session) -> int:
 
 
 def _cmd_revisions_list(args, session) -> int:
-    raise NotImplementedError
+    from infrastructure.db import queries
+    result = queries.list_revisions(
+        session,
+        archive_id=args.archive_id,
+        page=args.page,
+        page_size=args.page_size,
+    )
+    _print_json(_list_result_to_dict(result))
+    return 0
 
 
 def _cmd_audit_list(args, session) -> int:
-    raise NotImplementedError
+    from infrastructure.db import queries
+    result = queries.list_audit_logs(
+        session,
+        target_type=args.target_type,
+        target_id=args.target_id,
+        page=args.page,
+        page_size=args.page_size,
+    )
+    _print_json(_list_result_to_dict(result))
+    return 0
 
 
 def run(argv: Optional[list[str]] = None) -> int:

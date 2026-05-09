@@ -255,3 +255,73 @@ class TestCliArchives(unittest.TestCase):
         ])
         self.assertEqual(rc, 2)
         self.assertIn("page_size", err)
+
+
+@unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
+class TestCliRevisionsAudit(unittest.TestCase):
+    def setUp(self):
+        from utils import archive_query as cli
+        self.cli = cli
+        self.engine = _make_engine()
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
+        with self.Session() as session:
+            self.ids = _seed_query_fixtures(session)
+            session.commit()
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def _run(self, argv):
+        parser = self.cli._build_parser()
+        try:
+            args = parser.parse_args(argv)
+        except SystemExit as exc:
+            return exc.code if isinstance(exc.code, int) else 2, "", ""
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        try:
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                with self.Session() as session:
+                    rc = args.func(args, session)
+        except ValueError as exc:
+            stderr.write(f"error: {exc}\n")
+            rc = 2
+        return rc, stdout.getvalue(), stderr.getvalue()
+
+    def test_revisions_list_returns_three(self):
+        archive_id = self.ids["archive_ids"][5]
+        rc, out, _ = self._run([
+            "revisions", "list", "--archive-id", str(archive_id),
+        ])
+        self.assertEqual(rc, 0)
+        payload = json.loads(out)
+        self.assertEqual(payload["total"], 3)
+
+    def test_revisions_list_archive_without_revisions_returns_empty(self):
+        archive_id = self.ids["archive_ids"][0]
+        rc, out, _ = self._run([
+            "revisions", "list", "--archive-id", str(archive_id),
+        ])
+        self.assertEqual(rc, 0)
+        payload = json.loads(out)
+        self.assertEqual(payload["total"], 0)
+
+    def test_audit_list_for_archive(self):
+        archive_id = self.ids["archive_ids"][5]
+        rc, out, _ = self._run([
+            "audit", "list", "--target-type", "archive",
+            "--target-id", str(archive_id),
+        ])
+        self.assertEqual(rc, 0)
+        payload = json.loads(out)
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["items"][0]["action"], "force_rerun_rules")
+
+    def test_audit_list_unknown_target_type_returns_2(self):
+        rc, _, err = self._run([
+            "audit", "list", "--target-type", "user", "--target-id", "1",
+        ])
+        self.assertEqual(rc, 2)
+        self.assertIn("unknown target_type", err)
