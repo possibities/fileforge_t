@@ -407,3 +407,92 @@ class TestSeedFixture(unittest.TestCase):
         with self.Session() as session:
             count = session.scalar(sa_select(func.count()).select_from(AuditLog))
             self.assertEqual(count, 1)
+
+
+@unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
+class TestListBatches(unittest.TestCase):
+    def setUp(self):
+        self.engine = _make_engine()
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
+        with self.Session() as session:
+            self.ids = _seed_query_fixtures(session)
+            session.commit()
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def test_unknown_project_returns_empty(self):
+        with self.Session() as session:
+            result = queries.list_batches(session, project_key="not_exist")
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.total, 0)
+        self.assertFalse(result.has_next)
+
+    def test_returns_two_batches_sorted_by_started_at_desc(self):
+        with self.Session() as session:
+            result = queries.list_batches(session, project_key="proj_test")
+        self.assertEqual(result.total, 2)
+        # batch_b started 2026-05-04, batch_a started 2026-05-01,b 应排在前
+        self.assertEqual(result.items[0].batch_key, "batch_b")
+        self.assertEqual(result.items[1].batch_key, "batch_a")
+        self.assertFalse(result.has_next)
+
+    def test_status_filter_completed_returns_only_batch_a(self):
+        with self.Session() as session:
+            result = queries.list_batches(
+                session, project_key="proj_test", status_filter=["completed"]
+            )
+        self.assertEqual(result.total, 1)
+        self.assertEqual(result.items[0].batch_key, "batch_a")
+        self.assertEqual(result.items[0].batch_status, "completed")
+
+    def test_status_filter_no_match_returns_empty(self):
+        with self.Session() as session:
+            result = queries.list_batches(
+                session, project_key="proj_test", status_filter=["aborted"]
+            )
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.total, 0)
+
+    def test_status_filter_empty_iter_treated_as_no_filter(self):
+        with self.Session() as session:
+            result = queries.list_batches(
+                session, project_key="proj_test", status_filter=[]
+            )
+        self.assertEqual(result.total, 2)
+
+    def test_pagination_page_size_1(self):
+        with self.Session() as session:
+            page1 = queries.list_batches(
+                session, project_key="proj_test", page=1, page_size=1
+            )
+            page2 = queries.list_batches(
+                session, project_key="proj_test", page=2, page_size=1
+            )
+            page3 = queries.list_batches(
+                session, project_key="proj_test", page=3, page_size=1
+            )
+        self.assertEqual(page1.items[0].batch_key, "batch_b")
+        self.assertTrue(page1.has_next)
+        self.assertEqual(page2.items[0].batch_key, "batch_a")
+        self.assertFalse(page2.has_next)
+        self.assertEqual(page3.items, [])
+        self.assertFalse(page3.has_next)
+        self.assertEqual(page3.total, 2)
+
+    def test_summary_field_does_not_include_failure_breakdown(self):
+        with self.Session() as session:
+            result = queries.list_batches(session, project_key="proj_test")
+        # BatchSummary 不应有 failure_breakdown
+        with self.assertRaises(AttributeError):
+            _ = result.items[0].failure_breakdown  # type: ignore[attr-defined]
+
+    def test_invalid_page_raises(self):
+        with self.Session() as session, self.assertRaises(ValueError):
+            queries.list_batches(session, project_key="proj_test", page=0)
+
+    def test_invalid_page_size_raises(self):
+        with self.Session() as session, self.assertRaises(ValueError):
+            queries.list_batches(session, project_key="proj_test", page_size=201)

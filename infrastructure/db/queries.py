@@ -272,6 +272,71 @@ def _build_list_result(
     )
 
 
+# ── Query 函数 ───────────────────────────────────────────────────────────────
+def _batch_to_summary(batch: ProcessingBatch) -> BatchSummary:
+    return BatchSummary(
+        id=batch.id,
+        project_id=batch.project_id,
+        batch_key=batch.batch_key,
+        batch_name=batch.batch_name,
+        input_dir=batch.input_dir,
+        output_dir=batch.output_dir,
+        batch_status=batch.batch_status,
+        started_at=batch.started_at,
+        finished_at=batch.finished_at,
+        total_archives=batch.total_archives,
+        total_pages=batch.total_pages,
+        success_count=batch.success_count,
+        fail_count=batch.fail_count,
+        summary_schema_version=batch.summary_schema_version,
+        created_at=batch.created_at,
+        updated_at=batch.updated_at,
+    )
+
+
+def list_batches(
+    session: Session,
+    *,
+    project_key: str,
+    status_filter: Optional[Iterable[str]] = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> "ListResult[BatchSummary]":
+    """按 project_key 过滤批次,默认按 started_at DESC NULLS LAST 排序。"""
+    _validate_pagination(page, page_size)
+
+    base = (
+        select(ProcessingBatch)
+        .join(Project, ProcessingBatch.project_id == Project.id)
+        .where(Project.project_key == project_key)
+    )
+    statuses = list(status_filter) if status_filter else []
+    if statuses:
+        base = base.where(ProcessingBatch.batch_status.in_(statuses))
+
+    total = session.scalar(
+        select(func.count()).select_from(base.subquery())
+    ) or 0
+
+    rows = session.scalars(
+        _paginate(
+            base.order_by(
+                ProcessingBatch.started_at.desc().nullslast(),
+                ProcessingBatch.id.desc(),
+            ),
+            page=page,
+            page_size=page_size,
+        )
+    ).all()
+
+    return _build_list_result(
+        items=[_batch_to_summary(b) for b in rows],
+        total=int(total),
+        page=page,
+        page_size=page_size,
+    )
+
+
 __all__ = [
     "ListResult",
     "ArchiveFilter",
@@ -282,4 +347,5 @@ __all__ = [
     "ArchiveDetail",
     "RevisionRow",
     "AuditLogRow",
+    "list_batches",
 ]
