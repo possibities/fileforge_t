@@ -163,11 +163,40 @@ def _cmd_batches_show(args, session) -> int:
 
 
 def _cmd_archives_list(args, session) -> int:
-    raise NotImplementedError
+    from infrastructure.db import queries
+    f = queries.ArchiveFilter(
+        archive_year=args.archive_year,
+        classification_code=args.classification_code or None,
+        retention_period=args.retention_period or None,
+        openness_status=args.openness_status,
+        processing_status=args.processing_status or None,
+        review_status=args.review_status or None,
+        correction_status=args.correction_status,
+        archive_no=args.archive_no,
+        item_no=args.item_no,
+        title_like=args.title_like,
+        responsible_party_like=args.responsible_party_like,
+        error_code=args.error_code or None,
+    )
+    result = queries.list_archives(
+        session,
+        batch_id=args.batch_id,
+        filter=f,
+        page=args.page,
+        page_size=args.page_size,
+    )
+    _print_json(_list_result_to_dict(result))
+    return 0
 
 
 def _cmd_archives_show(args, session) -> int:
-    raise NotImplementedError
+    from infrastructure.db import queries
+    detail = queries.get_archive_detail(session, archive_id=args.archive_id)
+    if detail is None:
+        sys.stderr.write(f"not found: archive id={args.archive_id}\n")
+        return 4
+    _print_json(dataclasses.asdict(detail))
+    return 0
 
 
 def _cmd_revisions_list(args, session) -> int:

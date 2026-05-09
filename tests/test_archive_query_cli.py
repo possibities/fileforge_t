@@ -152,3 +152,106 @@ class TestCliBatches(unittest.TestCase):
             rc = self._run_with_session(["batches", "show", "--batch-id", "99999"])
         self.assertEqual(rc, 4)
         self.assertIn("not found", stderr.getvalue())
+
+
+@unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
+class TestCliArchives(unittest.TestCase):
+    def setUp(self):
+        from utils import archive_query as cli
+        self.cli = cli
+        self.engine = _make_engine()
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
+        with self.Session() as session:
+            self.ids = _seed_query_fixtures(session)
+            session.commit()
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def _run(self, argv):
+        parser = self.cli._build_parser()
+        try:
+            args = parser.parse_args(argv)
+        except SystemExit as exc:
+            return exc.code if isinstance(exc.code, int) else 2, "", ""
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        try:
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                with self.Session() as session:
+                    rc = args.func(args, session)
+        except ValueError as exc:
+            stderr.write(f"error: {exc}\n")
+            rc = 2
+        return rc, stdout.getvalue(), stderr.getvalue()
+
+    def test_archives_list_no_filter(self):
+        rc, out, _ = self._run([
+            "archives", "list", "--batch-id", str(self.ids["batch_a_id"]),
+        ])
+        self.assertEqual(rc, 0)
+        payload = json.loads(out)
+        self.assertEqual(payload["total"], 6)
+
+    def test_archives_list_with_filters(self):
+        rc, out, _ = self._run([
+            "archives", "list",
+            "--batch-id", str(self.ids["batch_a_id"]),
+            "--archive-year", "2025",
+            "--classification-code", "ZHL",
+            "--processing-status", "success",
+        ])
+        self.assertEqual(rc, 0)
+        payload = json.loads(out)
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["items"][0]["archive_key"], "ar0")
+
+    def test_archives_list_repeatable_arg(self):
+        rc, out, _ = self._run([
+            "archives", "list",
+            "--batch-id", str(self.ids["batch_a_id"]),
+            "--classification-code", "DQL",
+            "--classification-code", "YWL",
+        ])
+        self.assertEqual(rc, 0)
+        payload = json.loads(out)
+        self.assertEqual(payload["total"], 2)
+
+    def test_archives_list_title_like(self):
+        rc, out, _ = self._run([
+            "archives", "list",
+            "--batch-id", str(self.ids["batch_a_id"]),
+            "--title-like", "needs_review",
+        ])
+        self.assertEqual(rc, 0)
+        payload = json.loads(out)
+        self.assertEqual(payload["total"], 1)
+
+    def test_archives_show_returns_detail_with_pages(self):
+        archive_id = self.ids["archive_ids"][0]
+        rc, out, _ = self._run([
+            "archives", "show", "--archive-id", str(archive_id),
+        ])
+        self.assertEqual(rc, 0)
+        payload = json.loads(out)
+        self.assertEqual(payload["archive_key"], "ar0")
+        self.assertEqual(len(payload["pages"]), 2)
+        self.assertIn("final_metadata", payload)
+
+    def test_archives_show_not_found_returns_4(self):
+        rc, _, err = self._run([
+            "archives", "show", "--archive-id", "99999",
+        ])
+        self.assertEqual(rc, 4)
+        self.assertIn("not found", err)
+
+    def test_archives_list_invalid_page_size_returns_2(self):
+        rc, _, err = self._run([
+            "archives", "list",
+            "--batch-id", str(self.ids["batch_a_id"]),
+            "--page-size", "500",
+        ])
+        self.assertEqual(rc, 2)
+        self.assertIn("page_size", err)
