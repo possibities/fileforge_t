@@ -631,6 +631,65 @@ def list_revisions(
     )
 
 
+def _audit_to_row(log: AuditLog) -> AuditLogRow:
+    return AuditLogRow(
+        id=log.id,
+        actor_user_id=log.actor_user_id,
+        action=log.action,
+        target_type=log.target_type,
+        target_id=log.target_id,
+        before_data=log.before_data,
+        after_data=log.after_data,
+        ip_address=log.ip_address,
+        user_agent=log.user_agent,
+        created_at=log.created_at,
+    )
+
+
+def list_audit_logs(
+    session: Session,
+    *,
+    target_type: str,
+    target_id: int,
+    page: int = 1,
+    page_size: int = 50,
+) -> "ListResult[AuditLogRow]":
+    """按 (target_type, target_id) 列出审计记录,默认 created_at DESC, id DESC。
+
+    一期白名单 target_type ∈ {"archive"};未知值快速失败,避免 audit 漏检(spec §6/§12.4)。
+    """
+    if target_type not in _AUDIT_TARGET_TYPES_ALLOWED:
+        raise ValueError(
+            f"unknown target_type={target_type!r}; "
+            f"allowed: {sorted(_AUDIT_TARGET_TYPES_ALLOWED)}"
+        )
+    _validate_pagination(page, page_size)
+
+    base = select(AuditLog).where(
+        AuditLog.target_type == target_type,
+        AuditLog.target_id == target_id,
+    )
+
+    total = session.scalar(
+        select(func.count()).select_from(base.subquery())
+    ) or 0
+
+    rows = session.scalars(
+        _paginate(
+            base.order_by(AuditLog.created_at.desc(), AuditLog.id.desc()),
+            page=page,
+            page_size=page_size,
+        )
+    ).all()
+
+    return _build_list_result(
+        items=[_audit_to_row(r) for r in rows],
+        total=int(total),
+        page=page,
+        page_size=page_size,
+    )
+
+
 __all__ = [
     "ListResult",
     "ArchiveFilter",
@@ -646,4 +705,5 @@ __all__ = [
     "list_archives",
     "get_archive_detail",
     "list_revisions",
+    "list_audit_logs",
 ]

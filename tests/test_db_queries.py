@@ -922,3 +922,50 @@ class TestListRevisions(unittest.TestCase):
         self.assertEqual(len(page2.items), 1)
         self.assertFalse(page2.has_next)
         self.assertEqual(page2.total, 3)
+
+
+@unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
+class TestListAuditLogs(unittest.TestCase):
+    def setUp(self):
+        self.engine = _make_engine()
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
+        with self.Session() as session:
+            self.ids = _seed_query_fixtures(session)
+            session.commit()
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def test_unknown_target_type_raises(self):
+        with self.Session() as session, self.assertRaises(ValueError) as ctx:
+            queries.list_audit_logs(session, target_type="user", target_id=1)
+        self.assertIn("unknown target_type", str(ctx.exception))
+
+    def test_returns_empty_when_target_id_not_found(self):
+        with self.Session() as session:
+            result = queries.list_audit_logs(
+                session, target_type="archive", target_id=99999
+            )
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.total, 0)
+
+    def test_returns_one_audit_log_for_archive_5(self):
+        archive_id = self.ids["archive_ids"][5]
+        with self.Session() as session:
+            result = queries.list_audit_logs(
+                session, target_type="archive", target_id=archive_id
+            )
+        self.assertEqual(result.total, 1)
+        self.assertEqual(result.items[0].action, "force_rerun_rules")
+        self.assertEqual(result.items[0].target_type, "archive")
+        self.assertEqual(result.items[0].target_id, archive_id)
+        self.assertEqual(result.items[0].before_data, {"题名": "旧"})
+        self.assertEqual(result.items[0].after_data, {"题名": "新"})
+
+    def test_invalid_page_raises(self):
+        with self.Session() as session, self.assertRaises(ValueError):
+            queries.list_audit_logs(
+                session, target_type="archive", target_id=1, page=0
+            )
