@@ -140,11 +140,26 @@ def _list_result_to_dict(result) -> dict:
 
 # ── 子命令处理函数 ──────────────────────────────────────────────────────────
 def _cmd_batches_list(args, session) -> int:
-    raise NotImplementedError
+    from infrastructure.db import queries
+    result = queries.list_batches(
+        session,
+        project_key=args.project_key,
+        status_filter=args.status_filter or None,
+        page=args.page,
+        page_size=args.page_size,
+    )
+    _print_json(_list_result_to_dict(result))
+    return 0
 
 
 def _cmd_batches_show(args, session) -> int:
-    raise NotImplementedError
+    from infrastructure.db import queries
+    detail = queries.get_batch_detail(session, batch_id=args.batch_id)
+    if detail is None:
+        sys.stderr.write(f"not found: batch id={args.batch_id}\n")
+        return 4
+    _print_json(dataclasses.asdict(detail))
+    return 0
 
 
 def _cmd_archives_list(args, session) -> int:
