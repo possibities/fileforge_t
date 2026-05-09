@@ -337,6 +337,38 @@ def list_batches(
     )
 
 
+def get_batch_detail(
+    session: Session,
+    *,
+    batch_id: int,
+) -> Optional[BatchDetail]:
+    """返回批次详情 + failure_breakdown + schema 三件套。找不到返回 None。"""
+    batch = session.get(ProcessingBatch, batch_id)
+    if batch is None:
+        return None
+    return BatchDetail(
+        id=batch.id,
+        project_id=batch.project_id,
+        batch_key=batch.batch_key,
+        batch_name=batch.batch_name,
+        input_dir=batch.input_dir,
+        output_dir=batch.output_dir,
+        batch_status=batch.batch_status,
+        started_at=batch.started_at,
+        finished_at=batch.finished_at,
+        total_archives=batch.total_archives,
+        total_pages=batch.total_pages,
+        success_count=batch.success_count,
+        fail_count=batch.fail_count,
+        summary_schema_version=batch.summary_schema_version,
+        created_at=batch.created_at,
+        updated_at=batch.updated_at,
+        failure_breakdown=dict(batch.failure_breakdown or {}),
+        summary_schema_ref=batch.summary_schema_ref,
+        summary_changelog_ref=batch.summary_changelog_ref,
+    )
+
+
 __all__ = [
     "ListResult",
     "ArchiveFilter",
@@ -348,4 +380,5 @@ __all__ = [
     "RevisionRow",
     "AuditLogRow",
     "list_batches",
+    "get_batch_detail",
 ]

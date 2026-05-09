@@ -496,3 +496,47 @@ class TestListBatches(unittest.TestCase):
     def test_invalid_page_size_raises(self):
         with self.Session() as session, self.assertRaises(ValueError):
             queries.list_batches(session, project_key="proj_test", page_size=201)
+
+
+@unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
+class TestGetBatchDetail(unittest.TestCase):
+    def setUp(self):
+        self.engine = _make_engine()
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
+        with self.Session() as session:
+            self.ids = _seed_query_fixtures(session)
+            session.commit()
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def test_returns_none_when_batch_not_found(self):
+        with self.Session() as session:
+            result = queries.get_batch_detail(session, batch_id=99999)
+        self.assertIsNone(result)
+
+    def test_returns_batch_a_with_full_fields(self):
+        with self.Session() as session:
+            result = queries.get_batch_detail(session, batch_id=self.ids["batch_a_id"])
+        self.assertIsNotNone(result)
+        assert result is not None  # for type narrowing
+        self.assertEqual(result.batch_key, "batch_a")
+        self.assertEqual(result.batch_status, "completed")
+        self.assertEqual(result.total_archives, 6)
+        self.assertEqual(result.success_count, 2)
+        self.assertEqual(result.fail_count, 2)
+        self.assertEqual(
+            result.failure_breakdown,
+            {"LLM_PARSE_FAIL": 1, "OCR_TIMEOUT": 1},
+        )
+        self.assertEqual(result.summary_schema_version, "1.0.0")
+        self.assertEqual(result.summary_schema_ref, "config/batch_summary.schema.json")
+
+    def test_running_batch_has_empty_failure_breakdown(self):
+        with self.Session() as session:
+            result = queries.get_batch_detail(session, batch_id=self.ids["batch_b_id"])
+        assert result is not None
+        self.assertEqual(result.batch_status, "running")
+        self.assertEqual(result.failure_breakdown, {})
