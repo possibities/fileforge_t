@@ -72,3 +72,60 @@ class TestDataclasses(unittest.TestCase):
         )
         with self.assertRaises(dataclasses.FrozenInstanceError):
             page.page_no = 2  # type: ignore[misc]
+
+
+@unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
+class TestPaginate(unittest.TestCase):
+    def setUp(self):
+        self.engine = _make_engine()
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def test_validate_page_lt_1_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            queries._validate_pagination(0, 50)
+        self.assertIn("page must be >= 1", str(ctx.exception))
+
+    def test_validate_page_size_lt_1_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            queries._validate_pagination(1, 0)
+        self.assertIn("page_size must be in [1, 200]", str(ctx.exception))
+
+    def test_validate_page_size_gt_200_raises(self):
+        with self.assertRaises(ValueError):
+            queries._validate_pagination(1, 201)
+
+    def test_validate_accepts_boundary_values(self):
+        queries._validate_pagination(1, 1)
+        queries._validate_pagination(1, 200)
+
+    def test_build_list_result_has_next_true_when_total_exceeds_page(self):
+        result = queries._build_list_result(
+            items=["a", "b"], total=10, page=1, page_size=2
+        )
+        self.assertTrue(result.has_next)
+        self.assertEqual(result.total, 10)
+        self.assertEqual(result.page, 1)
+        self.assertEqual(result.page_size, 2)
+
+    def test_build_list_result_has_next_false_on_last_page(self):
+        result = queries._build_list_result(
+            items=["i9", "i10"], total=10, page=5, page_size=2
+        )
+        self.assertFalse(result.has_next)
+
+    def test_build_list_result_empty_items(self):
+        result = queries._build_list_result(items=[], total=0, page=1, page_size=50)
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.total, 0)
+        self.assertFalse(result.has_next)
+
+    def test_build_list_result_page_beyond_end_returns_empty_no_next(self):
+        result = queries._build_list_result(items=[], total=3, page=99, page_size=50)
+        self.assertEqual(result.items, [])
+        self.assertFalse(result.has_next)
+        self.assertEqual(result.total, 3)

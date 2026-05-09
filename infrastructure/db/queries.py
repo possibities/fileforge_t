@@ -230,6 +230,48 @@ _PAGE_SIZE_MAX = 200
 _AUDIT_TARGET_TYPES_ALLOWED: frozenset[str] = frozenset({"archive"})
 
 
+# ── 分页 helper ──────────────────────────────────────────────────────────────
+def _validate_pagination(page: int, page_size: int) -> None:
+    """校验分页参数;不合法时立即抛 ValueError(spec §6)。"""
+    if page < 1:
+        raise ValueError(f"page must be >= 1, got {page}")
+    if page_size < _PAGE_SIZE_MIN or page_size > _PAGE_SIZE_MAX:
+        raise ValueError(
+            f"page_size must be in [{_PAGE_SIZE_MIN}, {_PAGE_SIZE_MAX}], got {page_size}"
+        )
+
+
+def _paginate(stmt: Select, *, page: int, page_size: int) -> Select:
+    """把 page/page_size 转 LIMIT/OFFSET 拍到 select 语句上。"""
+    offset = (page - 1) * page_size
+    return stmt.limit(page_size).offset(offset)
+
+
+def _build_list_result(
+    *,
+    items: list[T],
+    total: int,
+    page: int,
+    page_size: int,
+) -> "ListResult[T]":
+    """统一构造 ListResult,集中算 has_next。
+
+    has_next 语义:仍有下一页(下一页可能为空,与 page > 末页 时一致返回空集 has_next=False)。
+    """
+    if total <= 0 or page_size <= 0:
+        has_next = False
+    else:
+        last_page = math.ceil(total / page_size)
+        has_next = page < last_page
+    return ListResult(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_next=has_next,
+    )
+
+
 __all__ = [
     "ListResult",
     "ArchiveFilter",
