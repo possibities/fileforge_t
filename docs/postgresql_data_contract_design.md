@@ -209,6 +209,7 @@
 - `permissions`
 - `user_roles`
 - `role_permissions`
+- `web_sessions`
 
 建议约束：
 
@@ -218,6 +219,7 @@
 - `permissions.code` 唯一。
 - `user_roles(user_id, role_id)` 唯一。
 - `role_permissions(role_id, permission_id)` 唯一。
+- `web_sessions.token_hash` 唯一。
 
 `organizations` 表示平台内单位。单位不建议物理删除，应通过状态控制可用性。
 
@@ -262,6 +264,14 @@
 - 单位操作员只能访问和操作本单位项目，可校对 AI 结果，不需要单位管理员二次确认。
 - 导出权限可授予平台管理员、单位管理员和单位操作员。
 - 平台管理员是否可以直接修改所有单位的 AI 结果暂不强制，作为业务配置项保留。
+
+Web 登录 session：
+
+- `web_sessions.user_id` 指向 `app_users.id`。
+- cookie 保存明文随机 session token；数据库只保存 `sha256(token)`。
+- CSRF token 同样只保存 hash，表单提交时按 hash 校验。
+- `expires_at` 控制过期，`revoked_at` 非空表示已退出或被撤销。
+- `last_seen_at` 在有效请求加载当前用户时刷新。
 
 ### 4.3 批次表
 

@@ -541,6 +541,30 @@ class RolePermission(Base):
     )
 
 
+class WebSession(Base):
+    __tablename__ = "web_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("app_users.id", ondelete="CASCADE"), nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    csrf_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = _ts_col_optional()
+    created_at: Mapped[datetime] = _ts_col()
+    last_seen_at: Mapped[datetime] = _ts_col()
+
+    user: Mapped[AppUser] = relationship(AppUser)
+
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_web_sessions_token_hash"),
+        Index("ix_web_sessions_user", "user_id"),
+        Index("ix_web_sessions_expires", "expires_at"),
+        Index("ix_web_sessions_revoked", "revoked_at"),
+    )
+
+
 __all__ = [
     "Base",
     "JsonDoc",
@@ -568,4 +592,5 @@ __all__ = [
     "Permission",
     "UserRole",
     "RolePermission",
+    "WebSession",
 ]
