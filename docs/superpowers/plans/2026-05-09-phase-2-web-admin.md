@@ -10,6 +10,20 @@
 
 ---
 
+## 实施修订记录 (2026-05-13)
+
+下列 3 处偏差已被采纳为最终方案,原任务描述保留作为设计参考,**以本节为准**:
+
+1. **账户服务位置**:服务实现落在 `infrastructure/db/accounts.py`,而非原计划的 `web_admin/accounts.py`。原因:`utils/user_admin.py` CLI 与 `web_admin` 同时消费账户服务,放在 infrastructure 层让依赖单向 `web_admin → infrastructure/db`,避免 CLI 反向依赖表现层。
+2. **密码哈希位置**:`hash_password` / `verify_password` 随账户服务一起放在 `infrastructure/db/accounts.py`,而非原计划的 `web_admin/security.py`。后者仅承担 session / CSRF token 相关原语。两种 hash 按消费者域切分(密码 ↔ 账户,token ↔ web session),依赖方向正确。
+3. **迁移拆分**:原计划单一 `0003_web_admin_accounts.py` 包含 7 张表;实际拆为 `0003`(6 张账户类表,结构性域模型)+ `0004_web_sessions.py`(运行时 session 表)。两类表生命周期不同,分迁移利于回滚与并行演进。
+
+附带的位置/命名调整:
+- 管理 CLI 落在 `utils/user_admin.py`,而非 `web_admin/manage.py`(同样为避免 CLI 反向依赖 web 层)。
+- 账户/CLI 相关测试用 `tests/test_db_*.py` / `tests/test_user_admin_cli.py` 命名,而非 `tests/test_web_*.py`。
+
+---
+
 ## File Structure
 
 | 文件 | 类型 | 责任 |
@@ -19,25 +33,29 @@
 | `web_admin/app.py` | Create | `create_app()` factory and router registration |
 | `web_admin/settings.py` | Create | Web config from env with test overrides |
 | `web_admin/db.py` | Create | Request-level SQLAlchemy session dependency |
-| `web_admin/security.py` | Create | Password hashing and random token helpers |
-| `web_admin/auth.py` | Create | Auth/session/permission service |
-| `web_admin/accounts.py` | Create | User management service |
+| `web_admin/security.py` | Create | Session/CSRF token helpers(`generate_token` / `hash_token` / `verify_token_hash`)。密码哈希见 `infrastructure/db/accounts.py` |
+| `web_admin/auth.py` | Create | Auth/session/permission service,通过 `infrastructure.db.accounts.authenticate_user` 校验密码 |
+| `infrastructure/db/accounts.py` | Create(caf33f6 已落地) | Account service:密码哈希、用户/角色/权限 CRUD、`authenticate_user`,Web 与 CLI 共用 |
+| `utils/user_admin.py` | Create(caf33f6 已落地) | 管理 CLI:`roles init` / `orgs create` / `users {create,list,disable,reset-password}` / `login` |
 | `web_admin/routes/auth.py` | Create | Login/logout routes |
 | `web_admin/routes/users.py` | Create | User management routes |
 | `web_admin/routes/archives.py` | Create | Batch/archive/revision/audit routes |
 | `web_admin/templates/*.html` | Create | Server-rendered admin templates |
 | `web_admin/static/admin.css` | Create | Minimal admin styling |
-| `web_admin/manage.py` | Create | Admin bootstrap/reset CLI |
 | `infrastructure/db/models.py` | Modify | Add account/session ORM models only |
-| `infrastructure/db/migrations/versions/0003_web_admin_accounts.py` | Create | Account/session tables migration |
+| `infrastructure/db/migrations/versions/0003_web_admin_accounts.py` | Create(caf33f6 已落地) | 账户类 6 张表迁移(organizations / app_users / roles / permissions / user_roles / role_permissions) |
+| `infrastructure/db/migrations/versions/0004_web_sessions.py` | Create | `web_sessions` 表独立迁移,结构性 vs 运行时分离 |
 | `docs/postgresql_data_contract_design.md` | Modify | Add Phase 2 Web/admin account contract |
-| `tests/test_web_*.py` | Create | SQLite and FastAPI route tests |
+| `tests/test_web_*.py` | Create | Web 层 SQLite 与 FastAPI route tests |
+| `tests/test_db_accounts.py` / `test_db_account_models.py` / `test_user_admin_cli.py` | Create(caf33f6 已落地) | 账户服务、ORM 元数据、CLI 子命令的 SQLite 单测 |
 
 Implementation note: modifying `infrastructure/db/models.py` is necessary because Phase 2 adds database-backed users, roles, permissions, and sessions. Do not change existing pipeline models beyond adding these new classes and exports.
 
 ---
 
 ## Task 1: Web Dependency Layer And App Scaffold
+
+> **Status (2026-05-13):** 已实现于工作树(未提交)— `requirements/web.txt`、`web_admin/{__init__,settings,app,db}.py`、`tests/test_web_app.py`。`/healthz` 走通。
 
 **Files:**
 - Create: `requirements/web.txt`
@@ -119,6 +137,12 @@ git commit -m "web: scaffold FastAPI admin app"
 
 ## Task 2: Account ORM Models And Migration
 
+> **Status (2026-05-13):** 已分两次落地:
+> - caf33f6 提交了 `0003_web_admin_accounts.py` + 6 个账户 ORM 模型(`Organization`、`AppUser`、`Role`、`Permission`、`UserRole`、`RolePermission`)+ `tests/test_db_account_models.py`。
+> - 工作树新增 `0004_web_sessions.py` + `WebSession` ORM 模型 + `models.py` `__all__` 导出。
+>
+> 原计划单 0003 改为 0003(账户)+ 0004(session)拆分,见顶部"实施修订记录"。`tests/test_web_models.py` 不再单独创建;`web_sessions` 元数据断言落在 `tests/test_web_auth.py::test_web_session_table_is_registered`,账户表元数据断言落在 `tests/test_db_account_models.py`。
+
 **Files:**
 - Modify: `infrastructure/db/models.py`
 - Create: `infrastructure/db/migrations/versions/0003_web_admin_accounts.py`
@@ -198,6 +222,12 @@ git commit -m "db: add web admin account models"
 
 ## Task 3: Password And Token Security Service
 
+> **Status (2026-05-13):** 职责已重新切分:
+> - **密码哈希**(`hash_password` / `verify_password`,`pbkdf2_sha256$390000$...`)随账户服务一起放在 `infrastructure/db/accounts.py`(caf33f6),测试在 `tests/test_db_accounts.py`。
+> - 本任务收窄为 **token 安全**:`web_admin/security.py` 含 `generate_token` / `hash_token` / `verify_token_hash`(工作树未提交)。`tests/test_web_security.py` 尚未单独建文件,token 行为由 `tests/test_web_auth.py::test_token_hash_is_stable_and_does_not_store_plain_token` 间接覆盖。
+>
+> 见顶部"实施修订记录"第 2 条。
+
 **Files:**
 - Create: `web_admin/security.py`
 - Create: `tests/test_web_security.py`
@@ -250,6 +280,8 @@ git commit -m "web: add password and token security helpers"
 
 ## Task 4: Auth Service, Sessions, CSRF, Permissions
 
+> **Status (2026-05-13):** 已实现于工作树(未提交)— `web_admin/auth.py`(`create_session` / `login_user` / `load_current_user` / `verify_csrf_token` / `logout_session` / `require_permission`)+ `tests/test_web_auth.py`(login/logout/expire/CSRF/permission 全覆盖)。密码校验委托给 `infrastructure.db.accounts.authenticate_user`,session token 与 CSRF token 都只存 sha256。
+
 **Files:**
 - Create: `web_admin/auth.py`
 - Modify: `web_admin/settings.py`
@@ -298,6 +330,13 @@ git commit -m "web: add database session authentication"
 ---
 
 ## Task 5: Account Management Service And Bootstrap CLI
+
+> **Status (2026-05-13):** 已落地于 caf33f6,位置不同:
+> - **账户服务** → `infrastructure/db/accounts.py`(原计划 `web_admin/accounts.py`):`ensure_builtin_roles` / `create_user` / `list_users` / `disable_user` / `reset_password` / `authenticate_user`,内置三角色 `platform_admin` / `org_admin` / `org_operator` 与 10 个权限。
+> - **管理 CLI** → `utils/user_admin.py`(原计划 `web_admin/manage.py`),子命令:`roles init` / `orgs create` / `users {create,list,disable,reset-password}` / `login`,通过 `DATABASE_URL` 或 `--database-url` 解析。
+> - 测试:`tests/test_db_accounts.py`、`tests/test_user_admin_cli.py`、`tests/test_postgresql_basic_admin_docs.py`。
+>
+> 偏离原因见顶部"实施修订记录"第 1 条:CLI 与 Web 共用同一账户服务,所以服务必须沉到 infrastructure 层,依赖单向 `web_admin / utils → infrastructure/db`。
 
 **Files:**
 - Create: `web_admin/accounts.py`
