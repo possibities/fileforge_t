@@ -386,6 +386,144 @@ class TestArchiveEditRoute(unittest.TestCase):
         self.assertIn('name="csrf_token"', body)
         self.assertIn("立档单位名称", body)
 
+    def _post_edit(self, client, archive_id: int, csrf: str, **fields):
+        form = {
+            "title": "新题名",
+            "responsible_party": "县档案室",
+            "classification_code": "DQL",
+            "retention_period": "10年",
+            "reason": "",
+            "csrf_token": csrf,
+        }
+        form.update(fields)
+        return client.post(
+            f"/archives/{archive_id}/edit",
+            data=form,
+            follow_redirects=False,
+        )
+
+    def test_post_edit_csrf_missing_returns_403(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = self._post_edit(client, self.archive_a_id, csrf="")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_post_edit_invalid_retention_period_re_renders_with_error(self):
+        from infrastructure.db.models import MetadataRevision
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = self._post_edit(
+                client,
+                self.archive_a_id,
+                csrf=self._csrf(client),
+                retention_period="5年",
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("保管期限", resp.text)
+        with self.Session() as session:
+            self.assertEqual(session.query(MetadataRevision).count(), 0)
+
+    def test_post_edit_blank_title_re_renders_with_error(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = self._post_edit(
+                client,
+                self.archive_a_id,
+                csrf=self._csrf(client),
+                title="   ",
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("题名", resp.text)
+
+    def test_post_edit_too_long_title_re_renders_with_error(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = self._post_edit(
+                client,
+                self.archive_a_id,
+                csrf=self._csrf(client),
+                title="x" * 501,
+            )
+        self.assertEqual(resp.status_code, 200)
+
+    def test_post_edit_success_redirects_to_detail(self):
+        from infrastructure.db.models import AuditLog, MetadataRevision
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = self._post_edit(
+                client,
+                self.archive_a_id,
+                csrf=self._csrf(client),
+                title="新题名",
+            )
+        self.assertIn(resp.status_code, {302, 303})
+        self.assertEqual(resp.headers["location"], f"/archives/{self.archive_a_id}")
+        with self.Session() as session:
+            self.assertEqual(session.query(MetadataRevision).count(), 1)
+            self.assertEqual(session.query(AuditLog).count(), 1)
+
+    def test_post_edit_no_change_redirects_with_notice(self):
+        from infrastructure.db.models import MetadataRevision
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = self._post_edit(
+                client,
+                self.archive_a_id,
+                csrf=self._csrf(client),
+                title="原题名",
+            )
+        self.assertIn(resp.status_code, {302, 303})
+        self.assertEqual(
+            resp.headers["location"],
+            f"/archives/{self.archive_a_id}?notice=no_change",
+        )
+        with self.Session() as session:
+            self.assertEqual(session.query(MetadataRevision).count(), 0)
+
+    def test_post_edit_platform_admin_can_edit_any_org(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = self._post_edit(
+                client,
+                self.archive_b_id,
+                csrf=self._csrf(client),
+                title="跨组织修改",
+                responsible_party="X",
+                classification_code="DQL",
+                retention_period="永久",
+            )
+        self.assertIn(resp.status_code, {302, 303})
+
+    def test_post_edit_org_operator_cannot_edit_other_org(self):
+        with TestClient(self.app) as client:
+            self._login(client, OPERATOR_USERNAME, OPERATOR_PASSWORD)
+            resp = self._post_edit(
+                client,
+                self.archive_b_id,
+                csrf=self._csrf(client),
+                title="跨组织尝试",
+            )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_post_edit_records_actor_user_id_from_session(self):
+        from infrastructure.db.models import AppUser, AuditLog, MetadataRevision
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            self._post_edit(
+                client,
+                self.archive_a_id,
+                csrf=self._csrf(client),
+                title="新题名",
+                reason="OCR 漏字",
+            )
+        with self.Session() as session:
+            admin_id = session.query(AppUser).filter_by(username=ADMIN_USERNAME).first().id
+            rev = session.query(MetadataRevision).first()
+            audit = session.query(AuditLog).first()
+            self.assertEqual(rev.created_by, admin_id)
+            self.assertEqual(rev.reason, "OCR 漏字")
+            self.assertEqual(audit.actor_user_id, admin_id)
+
 
 if __name__ == "__main__":
     unittest.main()
