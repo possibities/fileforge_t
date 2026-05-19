@@ -552,6 +552,10 @@ __all__ = [
     "record_revisions",
     "record_audit_log",
     "apply_force_rerun_rules",
+    "EDITABLE_FIELDS",
+    "RETENTION_PERIOD_CHOICES",
+    "ManualCorrectionInput",
+    "apply_manual_correction",
 ]
 
 
@@ -717,5 +721,82 @@ def apply_force_rerun_rules(
         target_id=archive.id,
         before_data=old_final,
         after_data=new_metadata,
+    )
+    return rev_no
+
+
+# ── Web 后台人工修正(数据契约 §4.7 + §9.4) ──────────────────────────────────
+EDITABLE_FIELDS: tuple[str, ...] = ("题名", "责任者", "实体分类号", "保管期限")
+RETENTION_PERIOD_CHOICES: tuple[str, ...] = ("永久", "30年", "10年")
+
+
+@dataclass
+class ManualCorrectionInput:
+    """人工修正提交的 4 个字段新值。
+
+    所有字段都应在 Web/CLI 入口处完成 strip / 长度 / enum 校验后再传入;
+    apply_manual_correction 不做二次校验。
+    """
+
+    title: str
+    responsible_party: str
+    classification_code: str
+    retention_period: str
+
+
+def apply_manual_correction(
+    session: Session,
+    *,
+    archive: ArchiveRecord,
+    new_values: ManualCorrectionInput,
+    actor_user_id: int,
+    reason: Optional[str] = None,
+) -> int:
+    """对档案做人工修正:diff → revisions → 同步冗余列 + retention_period_code
+    → 置 correction_status='corrected' → audit。函数自身不 commit。
+
+    返回写入的 revision_no;无差异返回 0(无 audit、无字段更新)。
+    """
+    old_final = dict(archive.final_metadata or {})
+    overlay = {
+        "题名": new_values.title,
+        "责任者": new_values.responsible_party,
+        "实体分类号": new_values.classification_code,
+        "保管期限": new_values.retention_period,
+    }
+    new_final = {**old_final, **overlay}
+
+    diffs = _diff_metadata_to_revisions(old_final, new_final)
+    if not diffs:
+        return 0
+
+    stored_reason = reason if reason else "manual_correction"
+    rev_no = record_revisions(
+        session,
+        archive_id=archive.id,
+        revisions=diffs,
+        actor_user_id=actor_user_id,
+        reason=stored_reason,
+    )
+
+    archive.final_metadata = new_final
+    for key, column in _REDUNDANT_COLUMN_MAP.items():
+        if key in overlay:
+            value = overlay[key]
+            setattr(archive, column, str(value) if value is not None else None)
+    archive.retention_period_code = _resolve_retention_code(
+        new_final.get("归档年度"),
+        new_final.get("保管期限"),
+    )
+    archive.correction_status = "corrected"
+
+    record_audit_log(
+        session,
+        actor_user_id=actor_user_id,
+        action="manual_correction",
+        target_type="archive",
+        target_id=archive.id,
+        before_data=old_final,
+        after_data=new_final,
     )
     return rev_no

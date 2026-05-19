@@ -298,5 +298,297 @@ class TestToRelativePosix(unittest.TestCase):
         self.assertEqual(result, "outside_root/img.jpg")
 
 
+@unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
+class TestApplyManualCorrection(unittest.TestCase):
+    def setUp(self):
+        self.engine = _make_engine()
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
+        with self.Session() as session:
+            project = Project(project_key="p")
+            session.add(project)
+            session.flush()
+            batch = ProcessingBatch(project_id=project.id, batch_key="b")
+            session.add(batch)
+            session.flush()
+            self.project_id = project.id
+            self.batch_id = batch.id
+            session.commit()
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def _baseline_metadata(self) -> dict:
+        return {
+            "门类": "DQ",
+            "归档年度": "2025",
+            "实体分类号": "DQL",
+            "实体分类名称": "党群类",
+            "保管期限": "10年",
+            "责任者": "县档案室",
+            "文件编号": "DQ-2025-001",
+            "题名": "原题名",
+            "文件形成时间": "2025-03-01",
+            "密级": "公开",
+            "保密期限": "",
+            "开放状态": "开放",
+            "延期开放理由": "",
+            "立档单位名称": "县档案馆",
+            "数字化时间": "2025-04-10",
+            "档号": "2025-DQL-D10-0001",
+            "件号": "1",
+        }
+
+    def _make_archive(self, *, metadata=None, status="pending") -> int:
+        md = metadata if metadata is not None else self._baseline_metadata()
+        with self.Session() as session:
+            archive = ArchiveRecord(
+                project_id=self.project_id,
+                batch_id=self.batch_id,
+                archive_key="demo",
+                archive_name="demo",
+                title=md.get("题名"),
+                responsible_party=md.get("责任者"),
+                classification_code=md.get("实体分类号"),
+                retention_period=md.get("保管期限"),
+                archive_year=md.get("归档年度"),
+                final_metadata=md,
+                correction_status=status,
+            )
+            session.add(archive)
+            session.commit()
+            return archive.id
+
+    def _input(self, **overrides):
+        base = {
+            "title": "原题名",
+            "responsible_party": "县档案室",
+            "classification_code": "DQL",
+            "retention_period": "10年",
+        }
+        base.update(overrides)
+        return repositories.ManualCorrectionInput(**base)
+
+    def test_no_diff_returns_zero_and_writes_nothing(self):
+        archive_id = self._make_archive(status="pending")
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            rev_no = repositories.apply_manual_correction(
+                session,
+                archive=archive,
+                new_values=self._input(),
+                actor_user_id=1,
+            )
+            session.commit()
+        self.assertEqual(rev_no, 0)
+        with self.Session() as session:
+            from infrastructure.db.models import AuditLog, MetadataRevision
+            self.assertEqual(session.query(MetadataRevision).count(), 0)
+            self.assertEqual(session.query(AuditLog).count(), 0)
+            self.assertEqual(
+                session.get(ArchiveRecord, archive_id).correction_status, "pending"
+            )
+
+    def test_single_field_change_writes_one_revision_and_audit(self):
+        archive_id = self._make_archive()
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            rev_no = repositories.apply_manual_correction(
+                session,
+                archive=archive,
+                new_values=self._input(title="新题名"),
+                actor_user_id=42,
+            )
+            session.commit()
+        self.assertEqual(rev_no, 1)
+        with self.Session() as session:
+            from infrastructure.db.models import AuditLog, MetadataRevision
+            revisions = session.query(MetadataRevision).all()
+            self.assertEqual(len(revisions), 1)
+            self.assertEqual(revisions[0].field_key, "题名")
+            self.assertEqual(revisions[0].old_value, "原题名")
+            self.assertEqual(revisions[0].new_value, "新题名")
+            audits = session.query(AuditLog).all()
+            self.assertEqual(len(audits), 1)
+            self.assertEqual(audits[0].action, "manual_correction")
+            self.assertEqual(audits[0].target_type, "archive")
+            self.assertEqual(audits[0].target_id, archive_id)
+            self.assertEqual(audits[0].before_data["题名"], "原题名")
+            self.assertEqual(audits[0].after_data["题名"], "新题名")
+            self.assertEqual(audits[0].before_data["立档单位名称"], "县档案馆")
+
+    def test_multi_field_change_shares_one_revision_no(self):
+        archive_id = self._make_archive()
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            rev_no = repositories.apply_manual_correction(
+                session,
+                archive=archive,
+                new_values=self._input(
+                    title="新题名",
+                    responsible_party="县档案馆",
+                    classification_code="ZHL",
+                    retention_period="30年",
+                ),
+                actor_user_id=1,
+            )
+            session.commit()
+        with self.Session() as session:
+            from infrastructure.db.models import MetadataRevision
+            revisions = session.query(MetadataRevision).all()
+            self.assertEqual(len(revisions), 4)
+            self.assertEqual({r.revision_no for r in revisions}, {rev_no})
+            self.assertEqual(
+                {r.field_key for r in revisions},
+                {"题名", "责任者", "实体分类号", "保管期限"},
+            )
+
+    def test_retention_change_recomputes_retention_period_code(self):
+        archive_id = self._make_archive()
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            repositories.apply_manual_correction(
+                session,
+                archive=archive,
+                new_values=self._input(retention_period="30年"),
+                actor_user_id=1,
+            )
+            session.commit()
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            self.assertEqual(archive.retention_period, "30年")
+            self.assertEqual(archive.retention_period_code, "D30")
+
+    def test_classification_change_updates_redundant_column_only(self):
+        archive_id = self._make_archive()
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            archive.archive_no = "2025-DQL-D10-0001"
+            archive.item_no = "1"
+            session.commit()
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            repositories.apply_manual_correction(
+                session,
+                archive=archive,
+                new_values=self._input(classification_code="ZHL"),
+                actor_user_id=1,
+            )
+            session.commit()
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            self.assertEqual(archive.classification_code, "ZHL")
+            self.assertEqual(archive.archive_no, "2025-DQL-D10-0001")
+            self.assertEqual(archive.item_no, "1")
+
+    def test_other_metadata_keys_are_preserved(self):
+        archive_id = self._make_archive()
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            repositories.apply_manual_correction(
+                session,
+                archive=archive,
+                new_values=self._input(title="新题名"),
+                actor_user_id=1,
+            )
+            session.commit()
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            self.assertEqual(archive.final_metadata["立档单位名称"], "县档案馆")
+            self.assertEqual(archive.final_metadata["数字化时间"], "2025-04-10")
+            self.assertEqual(archive.final_metadata["题名"], "新题名")
+
+    def test_sets_correction_status_to_corrected(self):
+        archive_id = self._make_archive(status="pending")
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            repositories.apply_manual_correction(
+                session,
+                archive=archive,
+                new_values=self._input(title="新题名"),
+                actor_user_id=1,
+            )
+            session.commit()
+        with self.Session() as session:
+            self.assertEqual(
+                session.get(ArchiveRecord, archive_id).correction_status,
+                "corrected",
+            )
+
+    def test_reason_empty_stores_literal_marker(self):
+        archive_id = self._make_archive()
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            repositories.apply_manual_correction(
+                session,
+                archive=archive,
+                new_values=self._input(title="A"),
+                actor_user_id=1,
+                reason=None,
+            )
+            repositories.apply_manual_correction(
+                session,
+                archive=archive,
+                new_values=self._input(title="B"),
+                actor_user_id=1,
+                reason="OCR 漏字",
+            )
+            session.commit()
+        with self.Session() as session:
+            from infrastructure.db.models import MetadataRevision
+            rows = (
+                session.query(MetadataRevision)
+                .order_by(MetadataRevision.revision_no)
+                .all()
+            )
+            self.assertEqual(rows[0].reason, "manual_correction")
+            self.assertEqual(rows[-1].reason, "OCR 漏字")
+
+    def test_actor_user_id_recorded_on_both_tables(self):
+        archive_id = self._make_archive()
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            repositories.apply_manual_correction(
+                session,
+                archive=archive,
+                new_values=self._input(title="新题名"),
+                actor_user_id=77,
+            )
+            session.commit()
+        with self.Session() as session:
+            from infrastructure.db.models import AuditLog, MetadataRevision
+            self.assertEqual(session.query(MetadataRevision).first().created_by, 77)
+            self.assertEqual(session.query(AuditLog).first().actor_user_id, 77)
+
+    def test_force_rerun_rules_can_override_after_manual_correction(self):
+        archive_id = self._make_archive()
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            repositories.apply_manual_correction(
+                session,
+                archive=archive,
+                new_values=self._input(title="手工题名"),
+                actor_user_id=1,
+            )
+            session.commit()
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            self.assertEqual(archive.correction_status, "corrected")
+            new_md = dict(archive.final_metadata)
+            new_md["题名"] = "重跑题名"
+            repositories.apply_force_rerun_rules(
+                session,
+                archive=archive,
+                new_metadata=new_md,
+                actor_user_id=1,
+            )
+            session.commit()
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            self.assertEqual(archive.final_metadata["题名"], "重跑题名")
+            self.assertEqual(archive.title, "重跑题名")
+
+
 if __name__ == "__main__":
     unittest.main()
