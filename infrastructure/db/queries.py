@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Generic, Iterable, Optional, TypeVar
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from .models import (
@@ -299,6 +299,7 @@ def list_batches(
     *,
     project_key: str,
     status_filter: Optional[Iterable[str]] = None,
+    organization_id: Optional[int] = None,
     page: int = 1,
     page_size: int = 50,
 ) -> "ListResult[BatchSummary]":
@@ -313,6 +314,13 @@ def list_batches(
     statuses = list(status_filter) if status_filter else []
     if statuses:
         base = base.where(ProcessingBatch.batch_status.in_(statuses))
+    if organization_id is not None:
+        base = base.where(Project.organization_id == organization_id).where(
+            or_(
+                ProcessingBatch.organization_id == organization_id,
+                ProcessingBatch.organization_id.is_(None),
+            )
+        )
 
     total = session.scalar(
         select(func.count()).select_from(base.subquery())
@@ -461,6 +469,7 @@ def list_archives(
     *,
     batch_id: int,
     filter: Optional[ArchiveFilter] = None,
+    organization_id: Optional[int] = None,
     page: int = 1,
     page_size: int = 50,
 ) -> "ListResult[ArchiveSummary]":
@@ -468,6 +477,24 @@ def list_archives(
     _validate_pagination(page, page_size)
 
     base = select(ArchiveRecord).where(ArchiveRecord.batch_id == batch_id)
+    if organization_id is not None:
+        base = (
+            base.join(ProcessingBatch, ArchiveRecord.batch_id == ProcessingBatch.id)
+            .join(Project, ProcessingBatch.project_id == Project.id)
+            .where(Project.organization_id == organization_id)
+            .where(
+                or_(
+                    ProcessingBatch.organization_id == organization_id,
+                    ProcessingBatch.organization_id.is_(None),
+                )
+            )
+            .where(
+                or_(
+                    ArchiveRecord.organization_id == organization_id,
+                    ArchiveRecord.organization_id.is_(None),
+                )
+            )
+        )
     if filter is not None:
         base = _apply_archive_filter(base, filter)
 

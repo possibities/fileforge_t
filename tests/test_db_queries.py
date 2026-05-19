@@ -463,6 +463,28 @@ class TestListBatches(unittest.TestCase):
             )
         self.assertEqual(result.total, 2)
 
+    def test_organization_scope_filters_batches_before_pagination(self):
+        with self.Session() as session:
+            project = session.get(Project, self.ids["project_id"])
+            batch_b = session.get(ProcessingBatch, self.ids["batch_b_id"])
+            assert project is not None
+            assert batch_b is not None
+            project.organization_id = 10
+            batch_b.organization_id = 20
+            session.commit()
+
+            result = queries.list_batches(
+                session,
+                project_key="proj_test",
+                organization_id=10,
+                page=1,
+                page_size=1,
+            )
+
+        self.assertEqual(result.total, 1)
+        self.assertEqual(result.items[0].batch_key, "batch_a")
+        self.assertFalse(result.has_next)
+
     def test_pagination_page_size_1(self):
         with self.Session() as session:
             page1 = queries.list_batches(
@@ -580,6 +602,28 @@ class TestListArchives(unittest.TestCase):
         self.assertEqual(archive_nos[:3], [
             "2025-DQL-Y-0001", "2025-ZHL-D30-0001", "2025-ZHL-D30-0002",
         ])
+
+    def test_organization_scope_filters_archives_before_pagination(self):
+        with self.Session() as session:
+            project = session.get(Project, self.ids["project_id"])
+            hidden_archive = session.get(ArchiveRecord, self.ids["archive_ids"][1])
+            assert project is not None
+            assert hidden_archive is not None
+            project.organization_id = 10
+            hidden_archive.organization_id = 20
+            session.commit()
+
+            result = queries.list_archives(
+                session,
+                batch_id=self.ids["batch_a_id"],
+                organization_id=10,
+                page=1,
+                page_size=2,
+            )
+
+        self.assertEqual(result.total, 5)
+        self.assertEqual([item.archive_key for item in result.items], ["ar0", "ar5"])
+        self.assertTrue(result.has_next)
 
     # ── filter 各字段 ──
     def test_filter_archive_year_int(self):
