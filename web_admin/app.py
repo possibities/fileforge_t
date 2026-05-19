@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from web_admin import auth as auth_service
 from web_admin.db import get_session
+from web_admin.routes import archives as archive_routes
 from web_admin.routes import auth as auth_routes
 from web_admin.routes import users as users_routes
 from web_admin.settings import WebAdminSettings
@@ -25,6 +26,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
 
     app.include_router(auth_routes.router)
     app.include_router(users_routes.router)
+    app.include_router(archive_routes.router)
 
     @app.get("/healthz")
     def healthcheck() -> dict[str, str]:

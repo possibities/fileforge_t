@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}批次详情 - FileForge 管理后台{% endblock %}
+{% block content %}
+<h1>批次详情</h1>
+<dl>
+  <dt>批次 Key</dt>
+  <dd>{{ batch.batch_key }}</dd>
+  <dt>名称</dt>
+  <dd>{{ batch.batch_name or "" }}</dd>
+  <dt>状态</dt>
+  <dd>{{ batch.batch_status }}</dd>
+  <dt>输入目录</dt>
+  <dd>{{ batch.input_dir or "" }}</dd>
+  <dt>输出目录</dt>
+  <dd>{{ batch.output_dir or "" }}</dd>
+  <dt>档案数</dt>
+  <dd>{{ batch.total_archives }}</dd>
+  <dt>页数</dt>
+  <dd>{{ batch.total_pages }}</dd>
+  <dt>成功/失败</dt>
+  <dd>{{ batch.success_count }} / {{ batch.fail_count }}</dd>
+  <dt>开始时间</dt>
+  <dd>{{ batch.started_at or "" }}</dd>
+  <dt>结束时间</dt>
+  <dd>{{ batch.finished_at or "" }}</dd>
+  <dt>Summary Schema</dt>
+  <dd>{{ batch.summary_schema_version or "" }}</dd>
+  <dt>Schema Ref</dt>
+  <dd>{{ batch.summary_schema_ref or "" }}</dd>
+  <dt>Changelog Ref</dt>
+  <dd>{{ batch.summary_changelog_ref or "" }}</dd>
+</dl>
+
+<h2>失败分布</h2>
+{% if batch.failure_breakdown %}
+<table>
+  <thead>
+    <tr>
+      <th>错误代码</th>
+      <th>数量</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for code, count in batch.failure_breakdown.items() %}
+    <tr>
+      <td>{{ code }}</td>
+      <td>{{ count }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>无失败记录。</p>
+{% endif %}
+
+<p><a href="/batches/{{ batch.id }}/archives">查看档案</a></p>
+<p><a href="/batches?project_key={{ project.project_key }}">返回批次查询</a></p>
+{% endblock %}

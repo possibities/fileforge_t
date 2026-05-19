@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}批次查询 - FileForge 管理后台{% endblock %}
+{% block content %}
+<h1>批次查询</h1>
+<form method="get" action="/batches">
+  <label>
+    项目 Key
+    <input type="text" name="project_key" value="{{ project_key or '' }}" required>
+  </label>
+  <label>
+    状态
+    <select name="status_filter">
+      <option value="">全部</option>
+      {% for status_code in ["running", "completed", "aborted"] %}
+      <option value="{{ status_code }}"{% if selected_status == status_code %} selected{% endif %}>{{ status_code }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit">查询</button>
+</form>
+
+{% if error %}
+<p role="alert">{{ error }}</p>
+{% endif %}
+
+{% if result %}
+<p>共 {{ result.total }} 条，当前第 {{ result.page }} 页。</p>
+<table>
+  <thead>
+    <tr>
+      <th>批次 Key</th>
+      <th>名称</th>
+      <th>状态</th>
+      <th>档案数</th>
+      <th>页数</th>
+      <th>成功</th>
+      <th>失败</th>
+      <th>开始时间</th>
+      <th>结束时间</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for batch in result.items %}
+    <tr>
+      <td>{{ batch.batch_key }}</td>
+      <td>{{ batch.batch_name or "" }}</td>
+      <td>{{ batch.batch_status }}</td>
+      <td>{{ batch.total_archives }}</td>
+      <td>{{ batch.total_pages }}</td>
+      <td>{{ batch.success_count }}</td>
+      <td>{{ batch.fail_count }}</td>
+      <td>{{ batch.started_at or "" }}</td>
+      <td>{{ batch.finished_at or "" }}</td>
+      <td><a href="/batches/{{ batch.id }}">详情</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% if result.has_next %}
+<p><a href="/batches?project_key={{ project_key }}{% if selected_status %}&status_filter={{ selected_status }}{% endif %}&page={{ result.page + 1 }}&page_size={{ result.page_size }}">下一页</a></p>
+{% endif %}
+{% endif %}
+<p><a href="/">返回主页</a></p>
+{% endblock %}
