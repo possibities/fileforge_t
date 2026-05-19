@@ -1,6 +1,6 @@
 # PostgreSQL 基础后台运行说明
 
-本文覆盖当前已经落地的数据库基础能力:人员/用户管理、登录校验、批次/档案/详情/修订/审计查询。它不启动 OCR、LLM、PaddleOCR、vLLM,也不运行完整管线 `python main.py`。
+本文覆盖当前已经落地的数据库基础 CLI 能力:人员/用户管理、登录校验、批次/档案/详情/修订/审计查询。Web 管理后台运行方式见 `docs/web_admin.md`。它不启动 OCR、LLM、PaddleOCR、vLLM,也不运行完整管线 `python main.py`。
 
 ## 1 安装依赖
 
@@ -153,3 +153,13 @@ python -m unittest discover -s tests -p "test_*.py"
 ```
 
 不要为这组验收启动 PaddleOCR、vLLM、PostgreSQL,也不要运行 `python main.py`。
+
+## 7 Web 后台入口
+
+Web 后台已经单独放在 `web_admin/` 包中。安装 `requirements/web.txt`、执行 `alembic upgrade head`、用 `utils.user_admin` 初始化管理员后,通过 FastAPI app factory 启动:
+
+```bash
+uvicorn web_admin.app:create_app --factory --host 0.0.0.0 --port 8080
+```
+
+当前没有 `web_admin.manage` 模块,不要使用 `python -m web_admin.manage create-admin`。管理员初始化继续使用本文第 4 节的 `python -m utils.user_admin ...` 命令。
