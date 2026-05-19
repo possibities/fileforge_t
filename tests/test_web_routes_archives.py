@@ -232,6 +232,22 @@ class TestArchiveQueryRoutes(unittest.TestCase):
             )
         self.assertEqual(resp.status_code, 404)
 
+    def test_archive_detail_shows_edit_link_when_user_has_correct_permission(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get(f"/archives/{self.archive_spring_id}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(f"/archives/{self.archive_spring_id}/edit", resp.text)
+
+    def test_archive_detail_no_change_notice_renders(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get(
+                f"/archives/{self.archive_spring_id}?notice=no_change",
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("无字段变化", resp.text)
+
 
 @unittest.skipUnless(DEPENDENCIES_AVAILABLE, f"web deps missing: {_IMPORT_ERROR}")
 class TestArchiveEditRoute(unittest.TestCase):

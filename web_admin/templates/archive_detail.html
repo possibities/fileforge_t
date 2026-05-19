@@ -84,10 +84,18 @@
 </table>
 
 <p><a href="/batches/{{ batch.id }}/archives">返回档案列表</a></p>
+
+{% if notice == "no_change" %}
+<p class="notice">无字段变化,未生成新修订。</p>
+{% endif %}
+
 <p>
   <a href="/archives/{{ archive.id }}/revisions">修订记录</a>
   {% if "audit:view" in user.permissions %}
   <a href="/archives/{{ archive.id }}/audit">审计记录</a>
+  {% endif %}
+  {% if "archive:correct" in user.permissions %}
+  <a href="/archives/{{ archive.id }}/edit">修正</a>
   {% endif %}
 </p>
 {% endblock %}

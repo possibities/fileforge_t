@@ -288,6 +288,7 @@ def list_archives(
 def get_archive_detail(
     request: Request,
     archive_id: int,
+    notice: Optional[str] = None,
     session: Session = Depends(get_session),
 ) -> Response:
     current_user, error_response = _require_archive_view(request, session)
@@ -315,6 +316,7 @@ def get_archive_detail(
             "project": project,
             "batch": batch,
             "archive": detail,
+            "notice": notice,
         },
     )
 
