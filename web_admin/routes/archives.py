@@ -432,61 +432,7 @@ def _current_values_from_archive(archive: ArchiveRecord) -> dict[str, str]:
     }
 
 
-@router.get("/archives/{archive_id}/edit")
-def get_archive_edit_form(
-    request: Request,
-    archive_id: int,
-    session: Session = Depends(get_session),
-) -> Response:
-    current_user, error_response = _require_archive_correct(request, session)
-    if error_response is not None:
-        return error_response
-
-    archive = session.get(ArchiveRecord, archive_id)
-    if archive is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-    access = _can_access_archive(session, current_user, archive)
-    if access is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-    batch, project = access
-
-    csrf_token = request.cookies.get("fileforge_csrf", "")
-    templates = request.app.state.templates
-    return templates.TemplateResponse(
-        request,
-        "archive_edit.html",
-        {
-            "user": current_user,
-            "project": project,
-            "batch": batch,
-            "archive": archive,
-            "values": _current_values_from_archive(archive),
-            "readonly_fields": _readonly_fields(archive),
-            "retention_choices": list(RETENTION_PERIOD_CHOICES),
-            "csrf_token": csrf_token,
-            "error": None,
-        },
-    )
-
-
-def _clean_form_field(
-    raw: Optional[str],
-    *,
-    max_len: int,
-    name: str,
-    required: bool = True,
-) -> tuple[Optional[str], Optional[str]]:
-    value = (raw or "").strip()
-    if not value:
-        if required:
-            return None, f"{name}不能为空"
-        return "", None
-    if len(value) > max_len:
-        return None, f"{name}长度不能超过 {max_len} 字符"
-    return value, None
-
-
-def _render_edit_with_error(
+def _render_edit_form(
     request: Request,
     *,
     current_user: CurrentUser,
@@ -494,7 +440,7 @@ def _render_edit_with_error(
     batch,
     archive: ArchiveRecord,
     values: dict[str, str],
-    error: str,
+    error: Optional[str],
 ) -> Response:
     csrf_token = request.cookies.get("fileforge_csrf", "")
     templates = request.app.state.templates
@@ -513,6 +459,52 @@ def _render_edit_with_error(
             "error": error,
         },
     )
+
+
+@router.get("/archives/{archive_id}/edit")
+def get_archive_edit_form(
+    request: Request,
+    archive_id: int,
+    session: Session = Depends(get_session),
+) -> Response:
+    current_user, error_response = _require_archive_correct(request, session)
+    if error_response is not None:
+        return error_response
+
+    archive = session.get(ArchiveRecord, archive_id)
+    if archive is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    access = _can_access_archive(session, current_user, archive)
+    if access is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    batch, project = access
+
+    return _render_edit_form(
+        request,
+        current_user=current_user,
+        project=project,
+        batch=batch,
+        archive=archive,
+        values=_current_values_from_archive(archive),
+        error=None,
+    )
+
+
+def _clean_form_field(
+    raw: Optional[str],
+    *,
+    max_len: int,
+    name: str,
+    required: bool = True,
+) -> tuple[Optional[str], Optional[str]]:
+    value = (raw or "").strip()
+    if not value:
+        if required:
+            return None, f"{name}不能为空"
+        return "", None
+    if len(value) > max_len:
+        return None, f"{name}长度不能超过 {max_len} 字符"
+    return value, None
 
 
 @router.post("/archives/{archive_id}/edit")
@@ -571,7 +563,7 @@ def post_archive_edit(
     }
 
     if err is not None:
-        return _render_edit_with_error(
+        return _render_edit_form(
             request,
             current_user=current_user,
             project=project,
