@@ -2,9 +2,25 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}FileForge 管理后台{% endblock %}</title>
+  <link rel="stylesheet" href="/static/admin.css">
 </head>
 <body>
-  {% block content %}{% endblock %}
+  <header class="topbar">
+    <a class="brand" href="/">FileForge</a>
+    {% if user is defined and user %}
+    <nav class="nav">
+      <a href="/batches">批次</a>
+      {% if "user:manage" in user.permissions %}
+      <a href="/admin/users">用户</a>
+      {% endif %}
+    </nav>
+    <div class="identity">{{ user.display_name or user.username }}</div>
+    {% endif %}
+  </header>
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
 </body>
 </html>
