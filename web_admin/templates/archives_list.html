@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}档案查询 - FileForge 管理后台{% endblock %}
+{% block content %}
+<h1>档案查询</h1>
+<p>项目: {{ project.project_key }}；批次: {{ batch.batch_key }}</p>
+
+<form method="get" action="/batches/{{ batch.id }}/archives">
+  <label>
+    年度
+    <input type="number" name="archive_year" value="{{ filters.archive_year }}">
+  </label>
+  <label>
+    分类号
+    <input type="text" name="classification_code" value="{{ filters.classification_code[0] if filters.classification_code else '' }}">
+  </label>
+  <label>
+    保管期限
+    <input type="text" name="retention_period" value="{{ filters.retention_period[0] if filters.retention_period else '' }}">
+  </label>
+  <label>
+    处理状态
+    <input type="text" name="processing_status" value="{{ filters.processing_status[0] if filters.processing_status else '' }}">
+  </label>
+  <label>
+    开放状态
+    <input type="text" name="openness_status" value="{{ filters.openness_status }}">
+  </label>
+  <label>
+    题名包含
+    <input type="text" name="title_like" value="{{ filters.title_like }}">
+  </label>
+  <label>
+    责任者包含
+    <input type="text" name="responsible_party_like" value="{{ filters.responsible_party_like }}">
+  </label>
+  <button type="submit">查询</button>
+</form>
+
+<p>共 {{ result.total }} 条，当前第 {{ result.page }} 页。</p>
+<table>
+  <thead>
+    <tr>
+      <th>档号</th>
+      <th>件号</th>
+      <th>题名</th>
+      <th>年度</th>
+      <th>分类号</th>
+      <th>保管期限</th>
+      <th>责任者</th>
+      <th>开放状态</th>
+      <th>处理状态</th>
+      <th>页数</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for archive in result.items %}
+    <tr>
+      <td>{{ archive.archive_no or "" }}</td>
+      <td>{{ archive.item_no or "" }}</td>
+      <td>{{ archive.title or archive.archive_name }}</td>
+      <td>{{ archive.archive_year or "" }}</td>
+      <td>{{ archive.classification_code or "" }}</td>
+      <td>{{ archive.retention_period or "" }}</td>
+      <td>{{ archive.responsible_party or "" }}</td>
+      <td>{{ archive.openness_status or "" }}</td>
+      <td>{{ archive.processing_status }}</td>
+      <td>{{ archive.page_count }}</td>
+      <td><a href="/archives/{{ archive.id }}">详情</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if result.has_next %}
+<p><a href="/batches/{{ batch.id }}/archives?page={{ result.page + 1 }}&page_size={{ result.page_size }}">下一页</a></p>
+{% endif %}
+<p><a href="/batches/{{ batch.id }}">返回批次详情</a></p>
+{% endblock %}

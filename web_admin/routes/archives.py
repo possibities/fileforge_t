@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from infrastructure.db import queries
-from infrastructure.db.models import ProcessingBatch, Project
+from infrastructure.db.models import ArchiveRecord, ProcessingBatch, Project
 
 from web_admin.auth import CurrentUser
 from web_admin.db import get_session
@@ -65,6 +65,26 @@ def _can_access_batch(
     ):
         return None
     return project
+
+
+def _can_access_archive(
+    session: Session,
+    current_user: CurrentUser,
+    archive: ArchiveRecord,
+) -> Optional[tuple[ProcessingBatch, Project]]:
+    batch = session.get(ProcessingBatch, archive.batch_id)
+    if batch is None:
+        return None
+    project = _can_access_batch(session, current_user, batch)
+    if project is None:
+        return None
+    if (
+        not _has_platform_scope(current_user)
+        and archive.organization_id is not None
+        and archive.organization_id != current_user.organization_id
+    ):
+        return None
+    return batch, project
 
 
 def _as_list(values: Optional[list[str]]) -> list[str]:
@@ -160,4 +180,123 @@ def get_batch_detail(
         request,
         "batch_detail.html",
         {"user": current_user, "project": project, "batch": detail},
+    )
+
+
+@router.get("/batches/{batch_id}/archives")
+def list_archives(
+    request: Request,
+    batch_id: int,
+    archive_year: Optional[int] = None,
+    classification_code: Optional[list[str]] = Query(default=None),
+    retention_period: Optional[list[str]] = Query(default=None),
+    openness_status: Optional[str] = None,
+    processing_status: Optional[list[str]] = Query(default=None),
+    review_status: Optional[list[str]] = Query(default=None),
+    correction_status: Optional[str] = None,
+    archive_no: Optional[str] = None,
+    item_no: Optional[str] = None,
+    title_like: Optional[str] = None,
+    responsible_party_like: Optional[str] = None,
+    error_code: Optional[list[str]] = Query(default=None),
+    page: int = 1,
+    page_size: int = 50,
+    session: Session = Depends(get_session),
+) -> Response:
+    current_user, error_response = _require_archive_view(request, session)
+    if error_response is not None:
+        return error_response
+
+    batch = session.get(ProcessingBatch, batch_id)
+    if batch is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    project = _can_access_batch(session, current_user, batch)
+    if project is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+
+    archive_filter = queries.ArchiveFilter(
+        archive_year=archive_year,
+        classification_code=_as_list(classification_code),
+        retention_period=_as_list(retention_period),
+        openness_status=(openness_status or None),
+        processing_status=_as_list(processing_status),
+        review_status=_as_list(review_status),
+        correction_status=(correction_status or None),
+        archive_no=(archive_no or None),
+        item_no=(item_no or None),
+        title_like=(title_like or None),
+        responsible_party_like=(responsible_party_like or None),
+        error_code=_as_list(error_code),
+    )
+    try:
+        result = queries.list_archives(
+            session,
+            batch_id=batch_id,
+            filter=archive_filter,
+            organization_id=_scoped_organization_id(current_user),
+            page=page,
+            page_size=page_size,
+        )
+    except ValueError as exc:
+        return _bad_request(exc)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "archives_list.html",
+        {
+            "user": current_user,
+            "project": project,
+            "batch": batch,
+            "result": result,
+            "filters": {
+                "archive_year": archive_year or "",
+                "classification_code": _as_list(classification_code),
+                "retention_period": _as_list(retention_period),
+                "openness_status": openness_status or "",
+                "processing_status": _as_list(processing_status),
+                "review_status": _as_list(review_status),
+                "correction_status": correction_status or "",
+                "archive_no": archive_no or "",
+                "item_no": item_no or "",
+                "title_like": title_like or "",
+                "responsible_party_like": responsible_party_like or "",
+                "error_code": _as_list(error_code),
+            },
+        },
+    )
+
+
+@router.get("/archives/{archive_id}")
+def get_archive_detail(
+    request: Request,
+    archive_id: int,
+    session: Session = Depends(get_session),
+) -> Response:
+    current_user, error_response = _require_archive_view(request, session)
+    if error_response is not None:
+        return error_response
+
+    archive = session.get(ArchiveRecord, archive_id)
+    if archive is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    access = _can_access_archive(session, current_user, archive)
+    if access is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    batch, project = access
+
+    detail = queries.get_archive_detail(session, archive_id=archive_id)
+    if detail is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "archive_detail.html",
+        {
+            "user": current_user,
+            "project": project,
+            "batch": batch,
+            "archive": detail,
+        },
     )
