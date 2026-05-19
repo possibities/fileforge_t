@@ -13,6 +13,7 @@ from infrastructure.db.models import ArchiveRecord, ProcessingBatch, Project
 from web_admin.auth import CurrentUser
 from web_admin.db import get_session
 from web_admin.routes import (
+    has_platform_scope,
     load_current_user_from_request,
     verify_csrf_from_request,
 )
@@ -26,15 +27,11 @@ AUDIT_VIEW_PERMISSION = "audit:view"
 ARCHIVE_CORRECT_PERMISSION = "archive:correct"
 
 
-def _has_platform_scope(current_user: CurrentUser) -> bool:
-    return "platform_admin" in current_user.roles
-
-
 def _can_access_organization(
     current_user: CurrentUser,
     organization_id: Optional[int],
 ) -> bool:
-    if _has_platform_scope(current_user):
+    if has_platform_scope(current_user):
         return True
     return organization_id is not None and organization_id == current_user.organization_id
 
@@ -76,7 +73,7 @@ def _can_access_batch(
     if project is None or not _can_access_organization(current_user, project.organization_id):
         return None
     if (
-        not _has_platform_scope(current_user)
+        not has_platform_scope(current_user)
         and batch.organization_id is not None
         and batch.organization_id != current_user.organization_id
     ):
@@ -96,7 +93,7 @@ def _can_access_archive(
     if project is None:
         return None
     if (
-        not _has_platform_scope(current_user)
+        not has_platform_scope(current_user)
         and archive.organization_id is not None
         and archive.organization_id != current_user.organization_id
     ):
@@ -109,7 +106,7 @@ def _as_list(values: Optional[list[str]]) -> list[str]:
 
 
 def _scoped_organization_id(current_user: CurrentUser) -> Optional[int]:
-    if _has_platform_scope(current_user):
+    if has_platform_scope(current_user):
         return None
     return current_user.organization_id
 

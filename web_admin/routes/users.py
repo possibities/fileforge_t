@@ -12,6 +12,8 @@ from infrastructure.db.models import AppUser
 from web_admin.auth import CurrentUser
 from web_admin.db import get_session
 from web_admin.routes import (
+    PLATFORM_ADMIN_ROLE,
+    has_platform_scope,
     load_current_user_from_request,
     verify_csrf_from_request,
 )
@@ -21,7 +23,6 @@ router = APIRouter(prefix="/admin/users")
 
 
 USER_MANAGE_PERMISSION = "user:manage"
-PLATFORM_ADMIN_ROLE = "platform_admin"
 
 
 def _require_user_manage(request: Request, session: Session):
@@ -35,12 +36,8 @@ def _require_user_manage(request: Request, session: Session):
     return current_user, None
 
 
-def _has_platform_scope(current_user: CurrentUser) -> bool:
-    return PLATFORM_ADMIN_ROLE in current_user.roles
-
-
 def _can_manage_user(current_user: CurrentUser, target: AppUser) -> bool:
-    if _has_platform_scope(current_user):
+    if has_platform_scope(current_user):
         return True
     return (
         current_user.organization_id is not None
@@ -49,7 +46,7 @@ def _can_manage_user(current_user: CurrentUser, target: AppUser) -> bool:
 
 
 def _visible_users(current_user: CurrentUser, users: list[accounts.UserRow]):
-    if _has_platform_scope(current_user):
+    if has_platform_scope(current_user):
         return users
     return [
         user
@@ -61,13 +58,13 @@ def _visible_users(current_user: CurrentUser, users: list[accounts.UserRow]):
 
 def _available_roles(session: Session, current_user: CurrentUser):
     roles = accounts.list_roles(session)
-    if _has_platform_scope(current_user):
+    if has_platform_scope(current_user):
         return roles
     return [role for role in roles if role.code != PLATFORM_ADMIN_ROLE]
 
 
 def _new_user_organization_id(current_user: CurrentUser) -> Optional[int]:
-    if _has_platform_scope(current_user):
+    if has_platform_scope(current_user):
         return None
     return current_user.organization_id
 
@@ -132,9 +129,9 @@ def post_new_user(
 
     cleaned_role_codes = [code for code in role_codes if code]
     organization_id = _new_user_organization_id(current_user)
-    if organization_id is None and not _has_platform_scope(current_user):
+    if organization_id is None and not has_platform_scope(current_user):
         return Response(status_code=status.HTTP_403_FORBIDDEN)
-    if not _has_platform_scope(current_user) and PLATFORM_ADMIN_ROLE in cleaned_role_codes:
+    if not has_platform_scope(current_user) and PLATFORM_ADMIN_ROLE in cleaned_role_codes:
         return Response(status_code=status.HTTP_403_FORBIDDEN)
     try:
         accounts.create_user(

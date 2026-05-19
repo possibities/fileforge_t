@@ -11,6 +11,13 @@ from web_admin import auth as auth_service
 from web_admin.auth import CurrentUser
 
 
+PLATFORM_ADMIN_ROLE = "platform_admin"
+
+
+def has_platform_scope(current_user: CurrentUser) -> bool:
+    return PLATFORM_ADMIN_ROLE in current_user.roles
+
+
 def load_current_user_from_request(
     request: Request,
     session: Session,
