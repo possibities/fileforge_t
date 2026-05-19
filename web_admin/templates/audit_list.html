@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}审计记录 - FileForge 管理后台{% endblock %}
+{% block content %}
+<h1>审计记录</h1>
+<p>项目: {{ project.project_key }}；批次: {{ batch.batch_key }}；档案: {{ archive.archive_name }}</p>
+
+<p>共 {{ result.total }} 条，当前第 {{ result.page }} 页。</p>
+<table>
+  <thead>
+    <tr>
+      <th>动作</th>
+      <th>目标</th>
+      <th>操作人</th>
+      <th>变更前</th>
+      <th>变更后</th>
+      <th>IP</th>
+      <th>User-Agent</th>
+      <th>时间</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for log in result.items %}
+    <tr>
+      <td>{{ log.action }}</td>
+      <td>{{ log.target_type or "" }} #{{ log.target_id or "" }}</td>
+      <td>{{ log.actor_user_id or "" }}</td>
+      <td>{{ log.before_data }}</td>
+      <td>{{ log.after_data }}</td>
+      <td>{{ log.ip_address or "" }}</td>
+      <td>{{ log.user_agent or "" }}</td>
+      <td>{{ log.created_at }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if result.has_next %}
+<p><a href="/archives/{{ archive.id }}/audit?page={{ result.page + 1 }}&page_size={{ result.page_size }}">下一页</a></p>
+{% endif %}
+<p><a href="/archives/{{ archive.id }}">返回档案详情</a></p>
+{% endblock %}

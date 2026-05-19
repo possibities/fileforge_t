@@ -19,6 +19,7 @@ router = APIRouter()
 
 
 ARCHIVE_VIEW_PERMISSION = "archive:view"
+AUDIT_VIEW_PERMISSION = "audit:view"
 
 
 def _has_platform_scope(current_user: CurrentUser) -> bool:
@@ -298,5 +299,96 @@ def get_archive_detail(
             "project": project,
             "batch": batch,
             "archive": detail,
+        },
+    )
+
+
+@router.get("/archives/{archive_id}/revisions")
+def list_archive_revisions(
+    request: Request,
+    archive_id: int,
+    page: int = 1,
+    page_size: int = 50,
+    session: Session = Depends(get_session),
+) -> Response:
+    current_user, error_response = _require_archive_view(request, session)
+    if error_response is not None:
+        return error_response
+
+    archive = session.get(ArchiveRecord, archive_id)
+    if archive is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    access = _can_access_archive(session, current_user, archive)
+    if access is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    batch, project = access
+
+    try:
+        result = queries.list_revisions(
+            session,
+            archive_id=archive_id,
+            page=page,
+            page_size=page_size,
+        )
+    except ValueError as exc:
+        return _bad_request(exc)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "revisions_list.html",
+        {
+            "user": current_user,
+            "project": project,
+            "batch": batch,
+            "archive": archive,
+            "result": result,
+        },
+    )
+
+
+@router.get("/archives/{archive_id}/audit")
+def list_archive_audit_logs(
+    request: Request,
+    archive_id: int,
+    page: int = 1,
+    page_size: int = 50,
+    session: Session = Depends(get_session),
+) -> Response:
+    current_user, error_response = _require_archive_view(request, session)
+    if error_response is not None:
+        return error_response
+    if AUDIT_VIEW_PERMISSION not in current_user.permissions:
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+
+    archive = session.get(ArchiveRecord, archive_id)
+    if archive is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    access = _can_access_archive(session, current_user, archive)
+    if access is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    batch, project = access
+
+    try:
+        result = queries.list_audit_logs(
+            session,
+            target_type="archive",
+            target_id=archive_id,
+            page=page,
+            page_size=page_size,
+        )
+    except ValueError as exc:
+        return _bad_request(exc)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "audit_list.html",
+        {
+            "user": current_user,
+            "project": project,
+            "batch": batch,
+            "archive": archive,
+            "result": result,
         },
     )
