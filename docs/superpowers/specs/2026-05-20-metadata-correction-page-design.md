@@ -111,7 +111,7 @@ POST /archives/{id}/edit
        │     10. flush + 返回 rev_no
        ├─ rev_no == 0 → 303 → /archives/{id}?notice=no_change
        ├─ rev_no > 0  → 303 → /archives/{id}
-       └─ 任意 ValueError → session.rollback,200 重渲 + error
+       └─ 未预期异常(DB/SQLAlchemy)→ session.rollback,FastAPI 默认 500 → error.html
 ```
 
 ### 4.3 函数签名
@@ -162,8 +162,8 @@ def apply_manual_correction(
 | 未登录 | 303 → `/login` | 303 → `/login` |
 | 缺 `archive:correct` | 403 | 403 |
 | 跨组织访问 | 404(隐藏存在) | 404 |
-| `org_operator` / `org_admin`(本组织) | 200 | 200 / 422 |
-| `platform_admin` | 200(任何组织) | 200 / 422(任何组织) |
+| `org_operator` / `org_admin`(本组织) | 200 | 303 成功 / 200 含 error 重渲 |
+| `platform_admin` | 200(任何组织) | 303 成功 / 200 含 error 重渲(任何组织) |
 
 `archive:correct` 已在 `BUILTIN_ROLES` 中 seed 给三个内置角色,无需修改 `accounts.py`。
 
@@ -185,8 +185,9 @@ def apply_manual_correction(
 | 档案不存在或越权 | 404 | `error.html` |
 | CSRF 失败 | 403 | `error.html` |
 | 无差异提交 | 303 → `/archives/{id}?notice=no_change` | 详情页可显示提示;一期不强制 base.html 添加 flash 区域,detail 页内做最小展示 |
-| `ValueError`(如 reason 超长被函数拒) | 200 重渲 + error | rollback |
-| 未知 DB 异常 | 500 | rollback + 日志;`error.html` 渲染 |
+| 未知异常(DB 错误、SQLAlchemy 异常等) | 500 | rollback + 日志;`error.html` 渲染 |
+
+**校验责任划分**:所有字段清洗与长度上限校验都在路由层做完(见 §4.4),`apply_manual_correction` 内部信任输入、不再二次校验。函数只在 `archive` 参数本身不可写(理论上不会发生)等编程性错误时才会抛异常,这种情况上升到 500。
 
 ### 5.4 关键约束
 
