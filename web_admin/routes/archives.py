@@ -9,6 +9,12 @@ from sqlalchemy.orm import Session
 
 from infrastructure.db import queries
 from infrastructure.db.models import ArchiveRecord, ProcessingBatch, Project
+from infrastructure.db.repositories import (
+    EDITABLE_FIELDS,
+    RETENTION_PERIOD_CHOICES,
+    ManualCorrectionInput,
+    apply_manual_correction,
+)
 
 from web_admin.auth import CurrentUser
 from web_admin.db import get_session
@@ -409,12 +415,9 @@ def list_archive_audit_logs(
     )
 
 
-_EDITABLE_FIELD_KEYS: tuple[str, ...] = ("题名", "责任者", "实体分类号", "保管期限")
-
-
 def _readonly_fields(archive: ArchiveRecord) -> list[tuple[str, str]]:
     md = dict(archive.final_metadata or {})
-    seen = set(_EDITABLE_FIELD_KEYS)
+    seen = set(EDITABLE_FIELDS)
     return [(key, md.get(key) or "") for key in md.keys() if key not in seen]
 
 
@@ -447,7 +450,6 @@ def get_archive_edit_form(
         return Response(status_code=status.HTTP_404_NOT_FOUND)
     batch, project = access
 
-    from infrastructure.db.repositories import RETENTION_PERIOD_CHOICES
     csrf_token = request.cookies.get("fileforge_csrf", "")
     templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -494,7 +496,6 @@ def _render_edit_with_error(
     values: dict[str, str],
     error: str,
 ) -> Response:
-    from infrastructure.db.repositories import RETENTION_PERIOD_CHOICES
     csrf_token = request.cookies.get("fileforge_csrf", "")
     templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -541,12 +542,6 @@ def post_archive_edit(
         return Response(status_code=status.HTTP_404_NOT_FOUND)
     batch, project = access
 
-    from infrastructure.db import repositories
-    from infrastructure.db.repositories import (
-        ManualCorrectionInput,
-        RETENTION_PERIOD_CHOICES,
-    )
-
     err: Optional[str] = None
     clean_title, err = _clean_form_field(title, max_len=500, name="题名")
     clean_party = clean_class = clean_retention = clean_reason = None
@@ -587,7 +582,7 @@ def post_archive_edit(
         )
 
     try:
-        rev_no = repositories.apply_manual_correction(
+        rev_no = apply_manual_correction(
             session,
             archive=archive,
             new_values=ManualCorrectionInput(
