@@ -233,5 +233,159 @@ class TestArchiveQueryRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 404)
 
 
+@unittest.skipUnless(DEPENDENCIES_AVAILABLE, f"web deps missing: {_IMPORT_ERROR}")
+class TestArchiveEditRoute(unittest.TestCase):
+    def setUp(self):
+        self.engine = _make_engine()
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
+        with self.Session() as session:
+            accounts.ensure_builtin_roles(session)
+            org_a = Organization(name="档案室甲")
+            org_b = Organization(name="档案室乙")
+            session.add_all([org_a, org_b])
+            session.flush()
+            accounts.create_user(
+                session,
+                username=ADMIN_USERNAME,
+                password=ADMIN_PASSWORD,
+                display_name="平台管理员",
+                role_codes=["platform_admin"],
+            )
+            accounts.create_user(
+                session,
+                username=OPERATOR_USERNAME,
+                password=OPERATOR_PASSWORD,
+                display_name="甲单位操作员",
+                organization_id=org_a.id,
+                role_codes=["org_operator"],
+            )
+            project_a = Project(project_key="proj_a", organization_id=org_a.id)
+            project_b = Project(project_key="proj_b", organization_id=org_b.id)
+            session.add_all([project_a, project_b])
+            session.flush()
+            batch_a = ProcessingBatch(
+                project_id=project_a.id,
+                batch_key="batch_a",
+                batch_status="completed",
+                organization_id=org_a.id,
+            )
+            batch_b = ProcessingBatch(
+                project_id=project_b.id,
+                batch_key="batch_b",
+                batch_status="completed",
+                organization_id=org_b.id,
+            )
+            session.add_all([batch_a, batch_b])
+            session.flush()
+            archive_a = ArchiveRecord(
+                project_id=project_a.id,
+                batch_id=batch_a.id,
+                archive_key="arc_a",
+                archive_name="甲档案",
+                title="原题名",
+                responsible_party="县档案室",
+                classification_code="DQL",
+                retention_period="10年",
+                archive_year="2025",
+                organization_id=org_a.id,
+                final_metadata={
+                    "门类": "DQ",
+                    "归档年度": "2025",
+                    "实体分类号": "DQL",
+                    "保管期限": "10年",
+                    "责任者": "县档案室",
+                    "题名": "原题名",
+                    "立档单位名称": "县档案馆",
+                },
+                correction_status="pending",
+            )
+            archive_b = ArchiveRecord(
+                project_id=project_b.id,
+                batch_id=batch_b.id,
+                archive_key="arc_b",
+                archive_name="乙档案",
+                title="乙题名",
+                organization_id=org_b.id,
+                final_metadata={"题名": "乙题名"},
+            )
+            session.add_all([archive_a, archive_b])
+            session.flush()
+            self.archive_a_id = archive_a.id
+            self.archive_b_id = archive_b.id
+            session.commit()
+        self.app = create_app(database_url="sqlite://")
+        self.app.state.session_factory = self.Session
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def _login(self, client, username: str, password: str) -> None:
+        resp = client.post(
+            "/login",
+            data={"username": username, "password": password},
+            follow_redirects=False,
+        )
+        self.assertIn(resp.status_code, {302, 303})
+
+    def _csrf(self, client) -> str:
+        return client.cookies.get("fileforge_csrf") or ""
+
+    def test_get_edit_form_unauthenticated_redirects_to_login(self):
+        with TestClient(self.app) as client:
+            resp = client.get(
+                f"/archives/{self.archive_a_id}/edit",
+                follow_redirects=False,
+            )
+        self.assertIn(resp.status_code, {302, 303})
+        self.assertTrue(resp.headers["location"].endswith("/login"))
+
+    def test_get_edit_form_missing_permission_returns_403(self):
+        from infrastructure.db.models import AppUser, Role, UserRole
+        with self.Session() as session:
+            role = Role(code="readonly", name="只读")
+            session.add(role)
+            session.flush()
+            accounts.create_user(
+                session,
+                username="readonly_user",
+                password="readonly-strong-pw",
+                display_name="只读用户",
+                role_codes=[],
+            )
+            user = session.query(AppUser).filter_by(username="readonly_user").first()
+            session.add(UserRole(user_id=user.id, role_id=role.id))
+            session.commit()
+        with TestClient(self.app) as client:
+            self._login(client, "readonly_user", "readonly-strong-pw")
+            resp = client.get(
+                f"/archives/{self.archive_a_id}/edit",
+                follow_redirects=False,
+            )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_get_edit_form_cross_org_returns_404(self):
+        with TestClient(self.app) as client:
+            self._login(client, OPERATOR_USERNAME, OPERATOR_PASSWORD)
+            resp = client.get(
+                f"/archives/{self.archive_b_id}/edit",
+                follow_redirects=False,
+            )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_get_edit_form_renders_prefilled_with_current_values(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get(f"/archives/{self.archive_a_id}/edit")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.text
+        self.assertIn('name="title"', body)
+        self.assertIn("原题名", body)
+        self.assertIn("县档案室", body)
+        self.assertIn('name="csrf_token"', body)
+        self.assertIn("立档单位名称", body)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Form, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,7 +12,10 @@ from infrastructure.db.models import ArchiveRecord, ProcessingBatch, Project
 
 from web_admin.auth import CurrentUser
 from web_admin.db import get_session
-from web_admin.routes import load_current_user_from_request
+from web_admin.routes import (
+    load_current_user_from_request,
+    verify_csrf_from_request,
+)
 
 
 router = APIRouter()
@@ -20,6 +23,7 @@ router = APIRouter()
 
 ARCHIVE_VIEW_PERMISSION = "archive:view"
 AUDIT_VIEW_PERMISSION = "audit:view"
+ARCHIVE_CORRECT_PERMISSION = "archive:correct"
 
 
 def _has_platform_scope(current_user: CurrentUser) -> bool:
@@ -43,6 +47,18 @@ def _require_archive_view(
     if current_user is None:
         return None, RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
     if ARCHIVE_VIEW_PERMISSION not in current_user.permissions:
+        return current_user, Response(status_code=status.HTTP_403_FORBIDDEN)
+    return current_user, None
+
+
+def _require_archive_correct(
+    request: Request,
+    session: Session,
+) -> tuple[Optional[CurrentUser], Optional[Response]]:
+    current_user, error_response = _require_archive_view(request, session)
+    if error_response is not None:
+        return current_user, error_response
+    if ARCHIVE_CORRECT_PERMISSION not in current_user.permissions:
         return current_user, Response(status_code=status.HTTP_403_FORBIDDEN)
     return current_user, None
 
@@ -390,5 +406,63 @@ def list_archive_audit_logs(
             "batch": batch,
             "archive": archive,
             "result": result,
+        },
+    )
+
+
+_EDITABLE_FIELD_KEYS: tuple[str, ...] = ("题名", "责任者", "实体分类号", "保管期限")
+
+
+def _readonly_fields(archive: ArchiveRecord) -> list[tuple[str, str]]:
+    md = dict(archive.final_metadata or {})
+    seen = set(_EDITABLE_FIELD_KEYS)
+    return [(key, md.get(key) or "") for key in md.keys() if key not in seen]
+
+
+def _current_values_from_archive(archive: ArchiveRecord) -> dict[str, str]:
+    md = archive.final_metadata or {}
+    return {
+        "title": md.get("题名") or archive.title or "",
+        "responsible_party": md.get("责任者") or archive.responsible_party or "",
+        "classification_code": md.get("实体分类号") or archive.classification_code or "",
+        "retention_period": md.get("保管期限") or archive.retention_period or "永久",
+        "reason": "",
+    }
+
+
+@router.get("/archives/{archive_id}/edit")
+def get_archive_edit_form(
+    request: Request,
+    archive_id: int,
+    session: Session = Depends(get_session),
+) -> Response:
+    current_user, error_response = _require_archive_correct(request, session)
+    if error_response is not None:
+        return error_response
+
+    archive = session.get(ArchiveRecord, archive_id)
+    if archive is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    access = _can_access_archive(session, current_user, archive)
+    if access is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    batch, project = access
+
+    from infrastructure.db.repositories import RETENTION_PERIOD_CHOICES
+    csrf_token = request.cookies.get("fileforge_csrf", "")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "archive_edit.html",
+        {
+            "user": current_user,
+            "project": project,
+            "batch": batch,
+            "archive": archive,
+            "values": _current_values_from_archive(archive),
+            "readonly_fields": _readonly_fields(archive),
+            "retention_choices": list(RETENTION_PERIOD_CHOICES),
+            "csrf_token": csrf_token,
+            "error": None,
         },
     )
