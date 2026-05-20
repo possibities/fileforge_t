@@ -110,6 +110,12 @@ http://127.0.0.1:8080/login
 - `/archives/{archive_id}/revisions`: 修订记录。
 - `/archives/{archive_id}/audit`: 审计记录。
 - `/archives/{archive_id}/edit`: 元数据人工修正(GET 表单 + POST 提交);仅允许编辑题名 / 责任者 / 实体分类号 / 保管期限 4 个字段,其余字段在表单内只读展示。提交后写 `metadata_revisions` 与 `audit_logs(action="manual_correction")`,并把 `correction_status` 置为 `corrected`。无差异提交跳转 `/archives/{archive_id}?notice=no_change`。
+- `/admin/organizations`:单位列表(`organization:manage`,即 `platform_admin` 专属)。
+- `/admin/organizations/new`:新建单位表单与提交。
+- `/admin/organizations/{organization_id}/disable` 与 `/enable`:切单位 status,不级联到项目。
+- `/admin/projects`:项目列表;`platform_admin` 可用 `?organization_id=N` 过滤,`org_admin` 自动限本单位。
+- `/admin/projects/new`:新建项目表单;`org_admin` 的 organization_id 在表单与后端均锁定为本单位。
+- `/admin/projects/{project_id}/disable` 与 `/enable`:切项目 status,不级联到批次/档案。
 
 ## 7 权限与范围
 
@@ -122,6 +128,9 @@ http://127.0.0.1:8080/login
 - 元数据修正(`/archives/{archive_id}/edit` GET 与 POST)需要 `archive:correct`,三个内置角色均已 seed 此权限;非平台管理员只能修正本单位档案。
 - 审计记录需要 `audit:view`。
 - 用户管理需要 `user:manage`。
+- 单位管理(`/admin/organizations/*`)需要 `organization:manage`,内置只 seed 给 `platform_admin`。
+- 项目管理(`/admin/projects/*`)需要 `project:manage`,seed 给 `platform_admin` 与 `org_admin`;`org_admin` 仅能看 / 操作本单位项目,跨单位访问统一 404。
+- 非 `platform_admin` 用户若 `app_users.organization_id` 为 NULL,项目页 / 项目操作一律 403(边界守卫,避免单位过滤失效)。
 
 ## 8 当前限制
 
