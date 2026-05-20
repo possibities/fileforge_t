@@ -10,9 +10,10 @@ import argparse
 import dataclasses
 import json
 import logging
-import os
 import sys
 from typing import Any, Callable, Optional
+
+from utils._cli_common import add_database_url_arg, resolve_database_url
 
 logger = logging.getLogger("user_admin")
 
@@ -27,11 +28,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="user_admin",
         description="人员/用户管理 CLI(JSON 输出)",
     )
-    parser.add_argument(
-        "--database-url",
-        default=None,
-        help="覆盖 DATABASE_URL 环境变量,通常应通过 env 注入",
-    )
+    add_database_url_arg(parser)
     sub = parser.add_subparsers(dest="resource", required=False)
 
     p_roles = sub.add_parser("roles", help="角色/权限")
@@ -73,10 +70,6 @@ def _build_parser() -> argparse.ArgumentParser:
     p_login.set_defaults(func=_cmd_login)
 
     return parser
-
-
-def _resolve_database_url(args) -> Optional[str]:
-    return args.database_url or os.environ.get("DATABASE_URL", "") or None
 
 
 def _cmd_roles_init(args, session) -> int:
@@ -190,7 +183,7 @@ def run(argv: Optional[list[str]] = None) -> int:
         sys.stderr.write("error: missing subcommand handler\n")
         return 2
 
-    database_url = _resolve_database_url(args)
+    database_url = resolve_database_url(args)
     if not database_url:
         sys.stderr.write("error: DATABASE_URL not set\n")
         return 2

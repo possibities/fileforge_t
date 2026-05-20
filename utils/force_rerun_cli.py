@@ -30,10 +30,11 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import sys
 from pathlib import Path
 from typing import Optional
+
+from utils._cli_common import add_database_url_arg, resolve_database_url
 
 logger = logging.getLogger("force_rerun_cli")
 
@@ -49,11 +50,7 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--metadata-file", required=True, help="新 metadata 的 JSON 文件路径")
     parser.add_argument("--reason", default="rules_rerun_force", help="审计理由,默认 rules_rerun_force")
     parser.add_argument("--actor-id", type=int, default=None, help="操作者 user id,可选")
-    parser.add_argument(
-        "--database-url",
-        default=None,
-        help="覆盖 DATABASE_URL 环境变量;通常应通过 env 注入",
-    )
+    add_database_url_arg(parser)
     return parser.parse_args(argv)
 
 
@@ -68,7 +65,7 @@ def _load_metadata(path: str) -> dict:
 def run(argv: Optional[list[str]] = None) -> int:
     args = _parse_args(argv)
 
-    database_url = args.database_url or os.environ.get("DATABASE_URL", "")
+    database_url = resolve_database_url(args)
     if not database_url:
         logger.error("DATABASE_URL 未设置,且未通过 --database-url 指定")
         return 2

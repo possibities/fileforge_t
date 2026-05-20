@@ -31,9 +31,10 @@ import argparse
 import dataclasses
 import json
 import logging
-import os
 import sys
 from typing import Any, Callable, Optional
+
+from utils._cli_common import add_database_url_arg, resolve_database_url
 
 logger = logging.getLogger("archive_query")
 
@@ -43,11 +44,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="archive_query",
         description="读侧 DB 查询 CLI(JSON 输出)",
     )
-    parser.add_argument(
-        "--database-url",
-        default=None,
-        help="覆盖 DATABASE_URL 环境变量,通常应通过 env 注入",
-    )
+    add_database_url_arg(parser)
     sub = parser.add_subparsers(dest="resource", required=False)
 
     # ── batches ──
@@ -115,10 +112,6 @@ def _build_parser() -> argparse.ArgumentParser:
     p_audit_list.set_defaults(func=_cmd_audit_list)
 
     return parser
-
-
-def _resolve_database_url(args) -> Optional[str]:
-    return args.database_url or os.environ.get("DATABASE_URL", "") or None
 
 
 def _print_json(payload: Any) -> None:
@@ -244,7 +237,7 @@ def run(argv: Optional[list[str]] = None) -> int:
         sys.stderr.write("error: missing subcommand handler\n")
         return 2
 
-    database_url = _resolve_database_url(args)
+    database_url = resolve_database_url(args)
     if not database_url:
         sys.stderr.write("error: DATABASE_URL not set\n")
         return 2
