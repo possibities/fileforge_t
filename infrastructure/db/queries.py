@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime
 from typing import Any, Generic, Iterable, Optional, TypeVar
 
@@ -75,23 +75,7 @@ class BatchSummary:
 
 
 @dataclass(frozen=True)
-class BatchDetail:
-    id: int
-    project_id: int
-    batch_key: str
-    batch_name: Optional[str]
-    input_dir: Optional[str]
-    output_dir: Optional[str]
-    batch_status: str
-    started_at: Optional[datetime]
-    finished_at: Optional[datetime]
-    total_archives: int
-    total_pages: int
-    success_count: int
-    fail_count: int
-    summary_schema_version: Optional[str]
-    created_at: datetime
-    updated_at: datetime
+class BatchDetail(BatchSummary):
     failure_breakdown: dict[str, int]
     summary_schema_ref: Optional[str]
     summary_changelog_ref: Optional[str]
@@ -145,36 +129,9 @@ class ArchiveSummary:
     updated_at: datetime
 
 
-# ── ArchiveDetail(spec §3.7),45 字段 ───────────────────────────────────────
+# ── ArchiveDetail(spec §3.7),在 ArchiveSummary 27 字段基础上扩 18 个 ────────
 @dataclass(frozen=True)
-class ArchiveDetail:
-    id: int
-    project_id: int
-    batch_id: int
-    archive_key: str
-    archive_name: str
-    page_count: int
-    processing_status: str
-    review_status: str
-    correction_status: str
-    error_code: Optional[str]
-    error_message: Optional[str]
-    archive_year: Optional[str]
-    classification_code: Optional[str]
-    classification_name: Optional[str]
-    retention_period: Optional[str]
-    retention_period_code: Optional[str]
-    responsible_party: Optional[str]
-    document_number: Optional[str]
-    title: Optional[str]
-    document_date: Optional[str]
-    openness_status: Optional[str]
-    archive_no: Optional[str]
-    item_no: Optional[str]
-    fonds_unit_name: Optional[str]
-    processed_time: Optional[str]
-    created_at: datetime
-    updated_at: datetime
+class ArchiveDetail(ArchiveSummary):
     archive_folder_name: Optional[str]
     source_folder: Optional[str]
     image_files: Optional[list[str]]
@@ -354,23 +311,9 @@ def get_batch_detail(
     batch = session.get(ProcessingBatch, batch_id)
     if batch is None:
         return None
+    summary = _batch_to_summary(batch)
     return BatchDetail(
-        id=batch.id,
-        project_id=batch.project_id,
-        batch_key=batch.batch_key,
-        batch_name=batch.batch_name,
-        input_dir=batch.input_dir,
-        output_dir=batch.output_dir,
-        batch_status=batch.batch_status,
-        started_at=batch.started_at,
-        finished_at=batch.finished_at,
-        total_archives=batch.total_archives,
-        total_pages=batch.total_pages,
-        success_count=batch.success_count,
-        fail_count=batch.fail_count,
-        summary_schema_version=batch.summary_schema_version,
-        created_at=batch.created_at,
-        updated_at=batch.updated_at,
+        **{f.name: getattr(summary, f.name) for f in fields(BatchSummary)},
         failure_breakdown=dict(batch.failure_breakdown or {}),
         summary_schema_ref=batch.summary_schema_ref,
         summary_changelog_ref=batch.summary_changelog_ref,
@@ -539,34 +482,9 @@ def _page_to_dataclass(p: ArchivePageModel) -> ArchivePage:
 
 
 def _archive_to_detail(ar: ArchiveRecord, pages: list[ArchivePage]) -> ArchiveDetail:
+    summary = _archive_to_summary(ar)
     return ArchiveDetail(
-        id=ar.id,
-        project_id=ar.project_id,
-        batch_id=ar.batch_id,
-        archive_key=ar.archive_key,
-        archive_name=ar.archive_name,
-        page_count=ar.page_count,
-        processing_status=ar.processing_status,
-        review_status=ar.review_status,
-        correction_status=ar.correction_status,
-        error_code=ar.error_code,
-        error_message=ar.error_message,
-        archive_year=ar.archive_year,
-        classification_code=ar.classification_code,
-        classification_name=ar.classification_name,
-        retention_period=ar.retention_period,
-        retention_period_code=ar.retention_period_code,
-        responsible_party=ar.responsible_party,
-        document_number=ar.document_number,
-        title=ar.title,
-        document_date=ar.document_date,
-        openness_status=ar.openness_status,
-        archive_no=ar.archive_no,
-        item_no=ar.item_no,
-        fonds_unit_name=ar.fonds_unit_name,
-        processed_time=ar.processed_time,
-        created_at=ar.created_at,
-        updated_at=ar.updated_at,
+        **{f.name: getattr(summary, f.name) for f in fields(ArchiveSummary)},
         archive_folder_name=ar.archive_folder_name,
         source_folder=ar.source_folder,
         image_files=list(ar.image_files) if ar.image_files else None,
