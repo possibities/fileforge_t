@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}项目管理 - FileForge 管理后台{% endblock %}
+{% block content %}
+<h1>项目管理</h1>
+
+<p><a href="/admin/projects/new">新建项目</a></p>
+
+{% if show_org_filter %}
+<form method="get" action="/admin/projects">
+  <label for="organization_id">按单位过滤</label>
+  <select id="organization_id" name="organization_id" onchange="this.form.submit()">
+    <option value="">全部</option>
+    {% for org in organizations_for_filter %}
+    <option value="{{ org.id }}"{% if filter_organization_id == org.id %} selected{% endif %}>{{ org.name }}</option>
+    {% endfor %}
+  </select>
+</form>
+{% endif %}
+
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>project_key</th>
+      <th>名称</th>
+      <th>单位</th>
+      <th>状态</th>
+      <th>创建时间</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for project in projects %}
+    <tr>
+      <td>{{ project.id }}</td>
+      <td>{{ project.project_key }}</td>
+      <td>{{ project.project_name or "" }}</td>
+      <td>{{ project.organization_name or "" }}</td>
+      <td>{{ project.status }}</td>
+      <td>{{ project.created_at }}</td>
+      <td>
+        {% if project.status == "active" %}
+        <form method="post" action="/admin/projects/{{ project.id }}/disable" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit">禁用</button>
+        </form>
+        {% else %}
+        <form method="post" action="/admin/projects/{{ project.id }}/enable" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit">启用</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

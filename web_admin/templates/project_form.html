@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}新建项目 - FileForge 管理后台{% endblock %}
+{% block content %}
+<h1>新建项目</h1>
+
+{% if error %}
+<p class="error">{{ error }}</p>
+{% endif %}
+
+<form method="post" action="/admin/projects/new">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <p>
+    <label for="project_key">project_key(必填,1–128 字符,字母数字/-/_,唯一)</label><br>
+    <input type="text" id="project_key" name="project_key" value="{{ values.project_key or '' }}" maxlength="128" pattern="[A-Za-z0-9_\-]+" required>
+  </p>
+  <p>
+    <label for="project_name">项目名称(可空,≤255 字符)</label><br>
+    <input type="text" id="project_name" name="project_name" value="{{ values.project_name or '' }}" maxlength="255">
+  </p>
+  <p>
+    <label for="description">描述(可空,≤1000 字符)</label><br>
+    <textarea id="description" name="description" rows="3" maxlength="1000">{{ values.description or '' }}</textarea>
+  </p>
+  <p>
+    <label for="organization_id">所属单位(必选)</label><br>
+    <select id="organization_id" name="organization_id" required{% if org_locked %} disabled{% endif %}>
+      {% if not org_locked %}<option value="">-- 请选择 --</option>{% endif %}
+      {% for org in available_organizations %}
+      <option value="{{ org.id }}"{% if values.organization_id == org.id %} selected{% endif %}>{{ org.name }}</option>
+      {% endfor %}
+    </select>
+    {% if org_locked %}
+    <input type="hidden" name="organization_id" value="{{ values.organization_id }}">
+    {% endif %}
+  </p>
+  <p>
+    <button type="submit">创建</button>
+    <a href="/admin/projects">取消</a>
+  </p>
+</form>
+{% endblock %}
