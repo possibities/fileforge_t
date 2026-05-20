@@ -200,6 +200,20 @@ class TestOrganizationRoutes(unittest.TestCase):
             )
         self.assertEqual(resp.status_code, 404)
 
+    def test_base_nav_shows_organizations_link_for_platform_admin(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get("/admin/organizations")
+        self.assertIn('href="/admin/organizations"', resp.text)
+
+    def test_base_nav_hides_organizations_link_for_org_admin(self):
+        with TestClient(self.app) as client:
+            self._login(client, ORG_ADMIN_USERNAME, ORG_ADMIN_PASSWORD)
+            resp = client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn('href="/admin/organizations"', resp.text)
+        self.assertIn('href="/admin/projects"', resp.text)
+
 
 if __name__ == "__main__":
     unittest.main()
