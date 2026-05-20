@@ -2,6 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## 实施修订记录 (2026-05-20)
+
+本计划落地后,因后续阶段又出现 `utils/user_admin.py` 与 `utils/force_rerun_cli.py` 两个 CLI,出现了相同的 `--database-url` 注册与 `_resolve_database_url` 私有 helper。重构(commit `d7d3f84`)抽出公共模块,下列偏差应**优先于**本文后续 Task 步骤里的 CLI 代码片段:
+
+1. **`_resolve_database_url(args)` 迁出 archive_query.py**:本文在 CLI Task 中给出 `_resolve_database_url(args) -> Optional[str]` 作为模块私有 helper,但现已迁到 `utils/_cli_common.py` 作为公共 `resolve_database_url(args)`(同函数体)。**今天写新代码请 `from utils._cli_common import add_database_url_arg, resolve_database_url`,不要再定义本地版本**。
+2. **argparse `--database-url` 注册迁出**:本文在 `_build_parser()` 内直接调 `parser.add_argument("--database-url", default=None, help="...")`,现在统一改成 `add_database_url_arg(parser)`。同一 helper 已在 `archive_query.py` / `user_admin.py` / `force_rerun_cli.py` 共用。
+3. **数据 dataclass 继承**:Phase 1C 落地的 `BatchDetail` / `ArchiveDetail` 在 2026-05-20 重构(commit `e5d5a18`)里改为继承 `BatchSummary` / `ArchiveSummary`,字段集合不变但只在子类声明扩展字段;`get_batch_detail` / `_archive_to_detail` 用 `fields(BatchSummary)` 解包父类字段。Task 7/Task 9 的代码片段保留作为字段清单参考,但具体声明顺序在当前代码里已经按继承组织。
+
 **Goal:** 为 `infrastructure/db` 增加只读查询层(`queries.py`)与命令行入口(`utils/archive_query.py`),为后续 Web 管理后台数据接入铺路。
 
 **Architecture:** queries.py 暴露 6 个只读函数(返回 frozen dataclass),CLI 用 argparse 单入口 subparser dispatch,所有逻辑 SQLite 单测全覆盖。设计契约见 `docs/superpowers/specs/2026-05-04-phase-1c-readside-queries-design.md`。

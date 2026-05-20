@@ -2,6 +2,16 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## 实施修订记录 (2026-05-20)
+
+本计划实施完成后,紧接着做了一轮重构。下列偏差应**优先于**本文后续 Task 步骤中给出的代码片段:
+
+1. **`_has_platform_scope` 迁出 archives.py**:实现写在了 archives.py 的私有 helper `_has_platform_scope`,但随后(commit `960f153`)发现 `users.py` 有同名同实现,合并到 `web_admin/routes/__init__.py` 作为公共 `has_platform_scope`。**Task 3 Step 3 的"_has_platform_scope" 调用,在如今的代码里应是 `has_platform_scope`(无下划线前缀,从 routes 包 import)**。
+2. **`_EDITABLE_FIELD_KEYS` 删除**:Task 3 Step 4 给出 `_EDITABLE_FIELD_KEYS: tuple[str, ...] = ("题名", "责任者", "实体分类号", "保管期限")` 这个本地常量,但 `infrastructure/db/repositories.py` 早已有同值的 `EDITABLE_FIELDS`(Task 1 Step 4 引入)。重构(commit `f98e543`)把 archives.py 顶部直接 `from infrastructure.db.repositories import EDITABLE_FIELDS, RETENTION_PERIOD_CHOICES, ManualCorrectionInput, apply_manual_correction`,删除 `_EDITABLE_FIELD_KEYS` 与 3 处 lazy import。**今天写新代码请直接 import `EDITABLE_FIELDS`,不要再定义本地版本**。
+3. **`_render_edit_with_error` 重命名并合并入口**:Task 4 Step 4 引入了 `_render_edit_with_error(...)` 专门处理失败重渲染。重构(commit `238fcd5`)把 GET 路由原地构造 context 的逻辑也抽进去,统一改名为 `_render_edit_form(... error: Optional[str])`,GET 路由与失败重渲染走同一个 helper(`error=None` / `error=str`)。**今天 grep 不到 `_render_edit_with_error`,应使用 `_render_edit_form`**。
+
+附带说明:Task 6 §9.4 在数据契约文档里的实际编号为 §9.8(原文档已有 §9.1–9.7),实施时按既有编号顺延。
+
 **Goal:** 在 Web 后台加 `/archives/{id}/edit` 页面与一个新写侧函数 `apply_manual_correction()`,允许有 `archive:correct` 权限的用户修正档案 4 个核心字段(题名 / 责任者 / 实体分类号 / 保管期限),并把变更写入 `metadata_revisions` + `audit_logs`,与 CLI force-rerun 路径正交共存。
 
 **Architecture:** 数据层新增 `apply_manual_correction()` 函数,复用既有 `_diff_metadata_to_revisions` / `record_revisions` / `record_audit_log` / `_REDUNDANT_COLUMN_MAP` / `_resolve_retention_code`。Web 层只做表单清洗 + CSRF + 权限校验,然后调函数。模板用最简 Jinja2(沿用 `admin.css`)。

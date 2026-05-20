@@ -106,9 +106,10 @@ http://127.0.0.1:8080/login
 - `/batches`: 按 `project_key` 查询批次。
 - `/batches/{batch_id}`: 批次详情。
 - `/batches/{batch_id}/archives`: 批次下档案列表和筛选。
-- `/archives/{archive_id}`: 档案详情。
+- `/archives/{archive_id}`: 档案详情;通过 `?notice=no_change` 显示"无字段变化"提示。
 - `/archives/{archive_id}/revisions`: 修订记录。
 - `/archives/{archive_id}/audit`: 审计记录。
+- `/archives/{archive_id}/edit`: 元数据人工修正(GET 表单 + POST 提交);仅允许编辑题名 / 责任者 / 实体分类号 / 保管期限 4 个字段,其余字段在表单内只读展示。提交后写 `metadata_revisions` 与 `audit_logs(action="manual_correction")`,并把 `correction_status` 置为 `corrected`。无差异提交跳转 `/archives/{archive_id}?notice=no_change`。
 
 ## 7 权限与范围
 
@@ -118,13 +119,15 @@ http://127.0.0.1:8080/login
 - `platform_admin` 可查看全平台数据。
 - 普通单位用户只能访问本单位 `organization_id` 范围内的数据;批次和档案列表在数据库查询层按组织过滤后再分页。
 - 批次、档案、修订记录需要 `archive:view`。
+- 元数据修正(`/archives/{archive_id}/edit` GET 与 POST)需要 `archive:correct`,三个内置角色均已 seed 此权限;非平台管理员只能修正本单位档案。
 - 审计记录需要 `audit:view`。
 - 用户管理需要 `user:manage`。
 
 ## 8 当前限制
 
 - Web 后台不触发 OCR/LLM 跑批。
-- Web 后台不提供在线 metadata 修正保存。
+- Web 在线修正只覆盖 4 个核心字段(题名 / 责任者 / 实体分类号 / 保管期限);其它字段仍走 CLI `python -m utils.force_rerun_cli ...`。`档号` / `件号` 由 `SequenceGenerator` 分配,任何时候都不开放手工编辑。
+- 一期修正采用 last-write-wins,无乐观锁;并发提交都会留痕,后到的覆盖 `final_metadata`。
 - Web 后台不提供项目/单位管理页面。
 - `web_admin.manage` 尚未实现;管理员初始化继续使用 `utils.user_admin`。
 - 当前页面是服务端渲染 HTML,无前端构建链。
