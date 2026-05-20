@@ -11,12 +11,20 @@ import hmac
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Iterable, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import AppUser, Organization, Permission, Role, RolePermission, UserRole
+from .models import (
+    AppUser,
+    Organization,
+    ORGANIZATION_STATUS,
+    Permission,
+    Role,
+    RolePermission,
+    UserRole,
+)
 
 
 PASSWORD_SCHEME = "pbkdf2_sha256"
@@ -81,6 +89,15 @@ class UserRow:
     organization_name: Optional[str]
     roles: list[str]
     created_at: datetime
+
+
+@dataclass(frozen=True)
+class OrganizationRow:
+    id: int
+    name: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
 
 
 def _b64encode(raw: bytes) -> str:
@@ -173,6 +190,45 @@ def create_organization(session: Session, *, name: str) -> Organization:
     session.add(org)
     session.flush()
     return org
+
+
+def list_organizations(
+    session: Session,
+    *,
+    status_filter: Optional[Iterable[str]] = None,
+) -> list[OrganizationRow]:
+    """按 name 升序列出单位;status_filter=None 返回全部。"""
+    stmt = select(Organization).order_by(Organization.name)
+    if status_filter:
+        stmt = stmt.where(Organization.status.in_(list(status_filter)))
+    rows = session.scalars(stmt).all()
+    return [
+        OrganizationRow(
+            id=o.id,
+            name=o.name,
+            status=o.status,
+            created_at=o.created_at,
+            updated_at=o.updated_at,
+        )
+        for o in rows
+    ]
+
+
+def set_organization_status(
+    session: Session,
+    *,
+    organization_id: int,
+    status: str,
+) -> None:
+    """切换单位 status。不 commit。非枚举值或 id 不存在 → ValueError。"""
+    if status not in ORGANIZATION_STATUS:
+        raise ValueError(
+            f"status 必须为 {ORGANIZATION_STATUS} 之一,实际为 {status}"
+        )
+    org = session.get(Organization, organization_id)
+    if org is None:
+        raise ValueError(f"organization 不存在: {organization_id}")
+    org.status = status
 
 
 def _get_role_by_code(session: Session, code: str) -> Role:
@@ -284,11 +340,14 @@ __all__ = [
     "BUILTIN_ROLES",
     "MIN_PASSWORD_LENGTH",
     "UserRow",
+    "OrganizationRow",
     "hash_password",
     "verify_password",
     "ensure_builtin_roles",
     "list_roles",
     "create_organization",
+    "list_organizations",
+    "set_organization_status",
     "create_user",
     "list_users",
     "authenticate_user",

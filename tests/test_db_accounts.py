@@ -132,5 +132,86 @@ class TestAccountServices(unittest.TestCase):
                 )
 
 
+@unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
+class TestOrganizationManagement(unittest.TestCase):
+    def setUp(self):
+        from infrastructure.db import accounts
+        from infrastructure.db.models import Organization
+
+        self.accounts = accounts
+        self.Organization = Organization
+        self.engine = _make_engine()
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def _seed_orgs(self):
+        with self.Session() as session:
+            a = self.Organization(name="档案室甲", status="active")
+            b = self.Organization(name="档案室乙", status="disabled")
+            c = self.Organization(name="档案室丙", status="active")
+            session.add_all([a, b, c])
+            session.commit()
+            return a.id, b.id, c.id
+
+    def test_list_organizations_returns_all_sorted_by_name(self):
+        self._seed_orgs()
+        with self.Session() as session:
+            rows = self.accounts.list_organizations(session)
+        self.assertEqual(len(rows), 3)
+        names_sorted = sorted([r.name for r in rows])
+        self.assertEqual([r.name for r in rows], names_sorted)
+
+    def test_list_organizations_status_filter(self):
+        self._seed_orgs()
+        with self.Session() as session:
+            rows = self.accounts.list_organizations(
+                session, status_filter=("active",)
+            )
+        self.assertEqual({r.name for r in rows}, {"档案室甲", "档案室丙"})
+
+    def test_set_organization_status_to_disabled(self):
+        a_id, _, _ = self._seed_orgs()
+        with self.Session() as session:
+            self.accounts.set_organization_status(
+                session, organization_id=a_id, status="disabled"
+            )
+            session.commit()
+        with self.Session() as session:
+            self.assertEqual(
+                session.get(self.Organization, a_id).status, "disabled"
+            )
+
+    def test_set_organization_status_to_active_reenables(self):
+        _, b_id, _ = self._seed_orgs()
+        with self.Session() as session:
+            self.accounts.set_organization_status(
+                session, organization_id=b_id, status="active"
+            )
+            session.commit()
+        with self.Session() as session:
+            self.assertEqual(
+                session.get(self.Organization, b_id).status, "active"
+            )
+
+    def test_set_organization_status_invalid_status_raises_value_error(self):
+        a_id, _, _ = self._seed_orgs()
+        with self.Session() as session:
+            with self.assertRaises(ValueError):
+                self.accounts.set_organization_status(
+                    session, organization_id=a_id, status="archived"
+                )
+
+    def test_set_organization_status_unknown_id_raises(self):
+        with self.Session() as session:
+            with self.assertRaises(ValueError):
+                self.accounts.set_organization_status(
+                    session, organization_id=99999, status="disabled"
+                )
+
+
 if __name__ == "__main__":
     unittest.main()
