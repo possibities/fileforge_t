@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}单位管理 - FileForge 管理后台{% endblock %}
+{% block content %}
+<h1>单位管理</h1>
+
+<p><a href="/admin/organizations/new">新建单位</a></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>名称</th>
+      <th>状态</th>
+      <th>创建时间</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for org in organizations %}
+    <tr>
+      <td>{{ org.id }}</td>
+      <td>{{ org.name }}</td>
+      <td>{{ org.status }}</td>
+      <td>{{ org.created_at }}</td>
+      <td>
+        {% if org.status == "active" %}
+        <form method="post" action="/admin/organizations/{{ org.id }}/disable" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit">禁用</button>
+        </form>
+        {% else %}
+        <form method="post" action="/admin/organizations/{{ org.id }}/enable" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit">启用</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
