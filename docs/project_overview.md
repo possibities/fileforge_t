@@ -521,11 +521,10 @@ fileforge/
    ├─ postgresql_data_contract_design.md  # 数据契约
    ├─ postgresql_basic_admin_runtime.md   # CLI 工具运行
    ├─ postgresql_integration_architecture.md  # 架构说明
-   ├─ web_admin.md                  # Web 后台运行
-   └─ superpowers/                  # spec + plan 历史
-      ├─ specs/{phase-1c, phase-2, metadata-correction, org-project-admin}-design.md
-      └─ plans/{phase-1c, phase-2, metadata-correction, org-project-admin}.md
+   └─ web_admin.md                  # Web 后台运行
 ```
+
+历次设计 spec / 实施 plan 已在 git log 中归档(MVP 收尾时清理出仓库),如需追溯参考相关 commit 历史。
 
 ---
 
@@ -648,6 +647,5 @@ uvicorn web_admin.app:create_app --factory --host 0.0.0.0 --port 8080
 | CLI 工具集怎么用 | `docs/postgresql_basic_admin_runtime.md` |
 | Web 后台运行方式 | `docs/web_admin.md` |
 | 项目架构来龙去脉 | `docs/postgresql_integration_architecture.md` |
-| 历次设计决策 | `docs/superpowers/specs/*.md` |
-| 历次实施步骤 | `docs/superpowers/plans/*.md` |
+| 历次设计决策 / 实施步骤 | `git log` |
 | AI 协作约定 | `CLAUDE.md`、`AGENTS.md` |

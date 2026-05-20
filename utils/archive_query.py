@@ -21,8 +21,6 @@
   3  数据库连接失败
   4  资源不存在(get_*_detail 返回 None)
   9  其他未分类异常
-
-设计参考 docs/superpowers/specs/2026-05-04-phase-1c-readside-queries-design.md。
 """
 
 from __future__ import annotations

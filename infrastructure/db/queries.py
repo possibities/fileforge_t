@@ -1,7 +1,6 @@
 """读侧只读查询函数集合,对外暴露领域 dataclass。
 
 调用方负责 session 生命周期;本模块不做 commit、不打开 engine。
-设计参考 docs/superpowers/specs/2026-05-04-phase-1c-readside-queries-design.md。
 """
 
 from __future__ import annotations
