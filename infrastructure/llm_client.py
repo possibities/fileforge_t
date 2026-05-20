@@ -11,7 +11,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 try:
     from openai import OpenAI
@@ -86,7 +86,7 @@ class LlmClient:
 
     # ── 公开接口 ──────────────────────────────────────────────────────────────
 
-    def extract_metadata(self, ocr_text: str, prompt: str) -> Dict:
+    def extract_metadata(self, ocr_text: str, prompt: str) -> dict:
         logger.info("[LLM] 正在分析文本并提取元数据...")
         self.last_trace = None
         if not ocr_text or not ocr_text.strip():
@@ -220,7 +220,7 @@ class LlmClient:
             response = response[start_idx:end_idx + 1]
         return response.strip()
 
-    def _parse_json(self, response: str) -> Tuple[Dict, str]:
+    def _parse_json(self, response: str) -> tuple[dict, str]:
         """
         解析 LLM 返回的 JSON 响应,返回 (metadata, parse_strategy)。
 
@@ -261,10 +261,10 @@ class LlmClient:
             logger.warning("-" * 70)
             return {}, PARSE_STRATEGY_FAILED
 
-    def _filter_metadata_keys(self, metadata: Dict[str, Any]) -> Dict:
+    def _filter_metadata_keys(self, metadata: dict[str, Any]) -> dict:
         return {k: v for k, v in metadata.items() if k in self.metadata_schema}
 
-    def _extract_fields_by_regex(self, response: str) -> Dict:
+    def _extract_fields_by_regex(self, response: str) -> dict:
         """
         在整体 JSON 解析失败时，按允许字段逐个定位并解析值。
 
@@ -273,7 +273,7 @@ class LlmClient:
           - 模型输出额外噪声，导致整体对象无法一次性解析
         """
         decoder = json.JSONDecoder()
-        metadata: Dict[str, Any] = {}
+        metadata: dict[str, Any] = {}
 
         for key in self.metadata_schema:
             pattern = rf'"{re.escape(key)}"\s*:'
