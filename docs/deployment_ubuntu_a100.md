@@ -184,7 +184,7 @@ cd ~/work/fileforge
 alembic upgrade head
 ```
 
-应该完成 0001 → 0004 共 4 次迁移,建出全部表。
+应该完成到 `0005_rebuild_upload_online_processing`,建出上传与在线跑批所需的当前 schema。
 
 验证:
 
@@ -192,7 +192,7 @@ alembic upgrade head
 psql "$DATABASE_URL" -c "\dt"
 ```
 
-应看到 `projects`、`processing_batches`、`archive_records`、`archive_pages`、`metadata_revisions`、`audit_logs`、`app_users`、`organizations`、`roles`、`permissions`、`user_roles`、`role_permissions`、`web_sessions`、`sequence_counters`、`export_files`、`processing_jobs`、`processing_job_attempts` 等表。
+应看到 `organizations`、`app_users`、`web_sessions`、`projects`、`upload_batches`、`uploaded_files`、`processing_batches`、`processing_jobs`、`processing_events`、`archive_records`、`archive_pages`、`llm_traces`、`sequence_counters`、`export_files`、`metadata_revisions`、`audit_logs` 等表。
 
 ---
 
@@ -201,7 +201,7 @@ psql "$DATABASE_URL" -c "\dt"
 ```bash
 cd ~/work/fileforge
 
-# 初始化内置角色 + 权限
+# 兼容命令:当前角色权限由 app_users.role + 代码映射提供,不会写旧 RBAC 表
 python -m utils.user_admin roles init
 
 # 创建平台管理员(后续登录 Web 后台用)
@@ -337,6 +337,10 @@ export WEB_SESSION_COOKIE_NAME='fileforge_session'
 export WEB_SESSION_TTL_SECONDS='28800'    # session 有效期 8 小时
 export WEB_COOKIE_SECURE='false'          # 生产 HTTPS 后改 true
 export WEB_CSRF_ENABLED='true'
+export WEB_UPLOAD_STORAGE_ROOT='input_documents/web_uploads'
+export WEB_PROCESSING_OUTPUT_ROOT='output_results/web_runs'
+export WEB_MAX_UPLOAD_BYTES='209715200'   # 200 MiB
+export WEB_MAX_UPLOAD_FILES='2000'
 ```
 
 浏览器访问 `http://<server-ip>:8080/login`,用第 8 节创建的 admin / `change-this-strong-password` 登录。
@@ -348,6 +352,8 @@ export WEB_CSRF_ENABLED='true'
 | `/admin/users` | 用户管理 | `user:manage` |
 | `/admin/organizations` | 单位管理 | `organization:manage`(只 `platform_admin`) |
 | `/admin/projects` | 项目管理 | `project:manage` |
+| `/uploads` | 上传图片/zip 并启动在线跑批 | `batch:manage` |
+| `/processing/batches/{id}` | 在线跑批进度、任务、事件 | `batch:manage` |
 | `/batches?project_key=demo_2025` | 批次列表 | `archive:view` |
 | `/batches/{id}` | 批次详情 | `archive:view` |
 | `/batches/{id}/archives` | 档案列表(12 字段过滤) | `archive:view` |
@@ -355,6 +361,29 @@ export WEB_CSRF_ENABLED='true'
 | `/archives/{id}/edit` | 元数据人工修正(4 字段) | `archive:correct` |
 | `/archives/{id}/revisions` | 修订记录 | `archive:view` |
 | `/archives/{id}/audit` | 审计记录 | `audit:view` |
+
+### 10.1 浏览器上传在线跑批
+
+Web 在线跑批依赖第 6 节的 vLLM 服务和 OCR 运行环境。推荐演示流程:
+
+```text
+登录 /login
+→ /admin/projects 创建或确认项目
+→ /uploads 上传散图或 zip
+→ 点击“开始处理”
+→ /processing/batches/{id} 查看进度
+→ /batches/{id}/archives 查看档案结果
+```
+
+zip 上传约定:一级目录表示一份档案;散图上传会被归入同一份档案。在线跑批会复用 `ArchiveClassifier + BatchProcessor + BatchRecorder`,不是单独的一套抽取逻辑。
+
+如果浏览器上传已完成,也可以从命令行处理该上传批次:
+
+```bash
+python -m utils.processing_runner --upload-batch-id 1
+```
+
+该入口适合演示补跑或后续接入独立 worker。它创建的处理批次和任务与 Web “开始处理”按钮一致。
 
 ---
 
@@ -365,10 +394,11 @@ export WEB_CSRF_ENABLED='true'
 - [ ] `nvidia-smi` 看到 GPU 进程占用(vLLM 进程)
 - [ ] `curl http://localhost:8000/v1/models` 返回 `qwen3-32b-awq`
 - [ ] `psql "$DATABASE_URL" -c "\dt"` 列出全部表
-- [ ] `python -m unittest discover -s tests -p "test_*.py"` 全绿(约 318 用例)
+- [ ] `python -m unittest discover -s tests -p "test_*.py"` 全绿(约 327 用例)
 - [ ] `python main.py` 跑通至少 1 个 demo 档案,`output_results/` 出现 JSON/CSV
 - [ ] `psql "$DATABASE_URL" -c "SELECT count(*) FROM archive_records"` 返回 ≥ 1
 - [ ] Web 后台 `http://<host>:8080/login` 能登录
+- [ ] `/uploads` 能上传 demo 图片或 zip,并能进入 `/processing/batches/{id}`
 - [ ] 看到批次详情、档案详情、修订记录、审计记录页面
 - [ ] 用 `org_operator` 账号登录验证组织隔离(只看到本单位档案)
 - [ ] 在 `/archives/{id}/edit` 改 4 字段,看到 `correction_status` 变成 `corrected`,`metadata_revisions` 表新增行

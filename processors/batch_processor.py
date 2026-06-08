@@ -268,11 +268,17 @@ class BatchProcessor:
 
         if self.recorder is not None:
             try:
+                if fail_count == 0:
+                    final_batch_status = "success"
+                elif success_count == 0:
+                    final_batch_status = "failed"
+                else:
+                    final_batch_status = "partial_failed"
                 self.recorder.on_batch_finish(
                     success_count=success_count,
                     fail_count=fail_count,
                     failure_breakdown=failure_breakdown,
-                    batch_status="completed",
+                    batch_status=final_batch_status,
                 )
             except Exception as exc:  # pragma: no cover - defensive
                 logger.exception("[Recorder] on_batch_finish 异常: %s", exc)

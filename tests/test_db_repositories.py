@@ -230,7 +230,7 @@ class TestUpsertArchiveRerun(unittest.TestCase):
             session.commit()
 
             self.assertEqual(archive.id, first_id)
-            self.assertEqual(archive.processing_status, "pending")
+            self.assertEqual(archive.processing_status, "running")
             self.assertIsNone(archive.error_code)
             self.assertIsNone(archive.error_message)
             self.assertIsNone(archive.traceback_text)
@@ -340,7 +340,7 @@ class TestApplyManualCorrection(unittest.TestCase):
             "件号": "1",
         }
 
-    def _make_archive(self, *, metadata=None, status="pending") -> int:
+    def _make_archive(self, *, metadata=None, status="none") -> int:
         md = metadata if metadata is not None else self._baseline_metadata()
         with self.Session() as session:
             archive = ArchiveRecord(
@@ -371,7 +371,7 @@ class TestApplyManualCorrection(unittest.TestCase):
         return repositories.ManualCorrectionInput(**base)
 
     def test_no_diff_returns_zero_and_writes_nothing(self):
-        archive_id = self._make_archive(status="pending")
+        archive_id = self._make_archive(status="none")
         with self.Session() as session:
             archive = session.get(ArchiveRecord, archive_id)
             rev_no = repositories.apply_manual_correction(
@@ -387,7 +387,7 @@ class TestApplyManualCorrection(unittest.TestCase):
             self.assertEqual(session.query(MetadataRevision).count(), 0)
             self.assertEqual(session.query(AuditLog).count(), 0)
             self.assertEqual(
-                session.get(ArchiveRecord, archive_id).correction_status, "pending"
+                session.get(ArchiveRecord, archive_id).correction_status, "none"
             )
 
     def test_single_field_change_writes_one_revision_and_audit(self):
@@ -500,7 +500,7 @@ class TestApplyManualCorrection(unittest.TestCase):
             self.assertEqual(archive.final_metadata["题名"], "新题名")
 
     def test_sets_correction_status_to_corrected(self):
-        archive_id = self._make_archive(status="pending")
+        archive_id = self._make_archive(status="none")
         with self.Session() as session:
             archive = session.get(ArchiveRecord, archive_id)
             repositories.apply_manual_correction(

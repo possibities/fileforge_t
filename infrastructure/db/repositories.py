@@ -22,12 +22,14 @@ from .models import (
     ArchiveRecord,
     AuditLog,
     ExportFile,
+    LlmTrace,
     MetadataRevision,
     ProcessingBatch,
+    ProcessingEvent,
     ProcessingJob,
-    ProcessingJobAttempt,
     Project,
     SequenceCounter,
+    UploadedFile,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,6 +62,8 @@ def get_or_create_project(
     session: Session,
     project_key: str,
     project_name: Optional[str] = None,
+    organization_id: Optional[int] = None,
+    created_by: Optional[int] = None,
 ) -> Project:
     if not project_key:
         raise ValueError("project_key 不能为空")
@@ -76,6 +80,8 @@ def get_or_create_project(
     project = Project(
         project_key=project_key,
         project_name=project_name or project_key,
+        organization_id=organization_id,
+        created_by=created_by,
         status="active",
         preserve_existing_numbers_on_rerun=True,
         numbering_rule={
@@ -97,6 +103,11 @@ def get_or_create_batch(
     batch_key: str,
     input_dir: Optional[str],
     output_dir: Optional[str],
+    upload_batch_id: Optional[int] = None,
+    trigger_type: str = "manual_cli",
+    batch_name: Optional[str] = None,
+    organization_id: Optional[int] = None,
+    created_by: Optional[int] = None,
     summary_schema_version: Optional[str] = None,
     summary_schema_ref: Optional[str] = None,
     summary_changelog_ref: Optional[str] = None,
@@ -113,10 +124,15 @@ def get_or_create_batch(
     if batch is None:
         batch = ProcessingBatch(
             project_id=project_id,
+            upload_batch_id=upload_batch_id,
             batch_key=batch_key,
+            batch_name=batch_name,
+            trigger_type=trigger_type,
             input_dir=input_dir,
             output_dir=output_dir,
-            batch_status="running",
+            batch_status="queued",
+            organization_id=organization_id,
+            created_by=created_by,
             summary_schema_version=summary_schema_version,
             summary_schema_ref=summary_schema_ref,
             summary_changelog_ref=summary_changelog_ref,
@@ -125,7 +141,13 @@ def get_or_create_batch(
         session.flush()
         logger.info("[DB] 已创建批次 project_id=%s batch_key=%s id=%s", project_id, batch_key, batch.id)
     else:
-        batch.batch_status = "running"
+        batch.batch_status = "queued"
+        if upload_batch_id is not None:
+            batch.upload_batch_id = upload_batch_id
+        if batch_name:
+            batch.batch_name = batch_name
+        if trigger_type:
+            batch.trigger_type = trigger_type
         batch.input_dir = input_dir or batch.input_dir
         batch.output_dir = output_dir or batch.output_dir
         if summary_schema_version:
@@ -152,6 +174,7 @@ def update_batch_progress(
         raise RuntimeError(f"batch id={batch_id} 不存在")
     batch.total_archives = total_archives
     batch.total_pages = total_pages
+    batch.batch_status = "running"
     if started_at is not None and batch.started_at is None:
         batch.started_at = started_at
 
@@ -163,7 +186,7 @@ def finalize_batch(
     success_count: int,
     fail_count: int,
     failure_breakdown: dict[str, int],
-    batch_status: str = "completed",
+    batch_status: str = "success",
     finished_at: Optional[datetime] = None,
 ) -> None:
     batch = session.get(ProcessingBatch, batch_id)
@@ -189,6 +212,9 @@ def upsert_archive(
     image_files: list[str],
     image_names: list[str],
     processed_time: Optional[str],
+    upload_batch_id: Optional[int] = None,
+    job_id: Optional[int] = None,
+    organization_id: Optional[int] = None,
 ) -> ArchiveRecord:
     archive = session.scalar(
         select(ArchiveRecord).where(
@@ -200,6 +226,8 @@ def upsert_archive(
         archive = ArchiveRecord(
             project_id=project_id,
             batch_id=batch_id,
+            upload_batch_id=upload_batch_id,
+            job_id=job_id,
             archive_key=archive_key,
             archive_name=archive_name,
             source_folder=source_folder,
@@ -207,7 +235,8 @@ def upsert_archive(
             image_files=image_files,
             image_names=image_names,
             processed_time=processed_time,
-            processing_status="pending",
+            processing_status="running",
+            organization_id=organization_id,
         )
         session.add(archive)
         session.flush()
@@ -219,9 +248,13 @@ def upsert_archive(
         archive.image_names = image_names
         if processed_time:
             archive.processed_time = processed_time
+        if upload_batch_id is not None:
+            archive.upload_batch_id = upload_batch_id
+        if job_id is not None:
+            archive.job_id = job_id
         # 重跑前重置状态为 running，但若已 corrected 不动
         if archive.correction_status != "corrected":
-            archive.processing_status = "pending"
+            archive.processing_status = "running"
             archive.error_code = None
             archive.error_message = None
             archive.traceback_text = None
@@ -250,6 +283,7 @@ def upsert_pages(
     archive_id: int,
     image_paths: Iterable[str],
     input_dir: Optional[str] = None,
+    upload_batch_id: Optional[int] = None,
 ) -> None:
     """Upsert ArchivePage 行。
 
@@ -273,11 +307,19 @@ def upsert_pages(
         file_hash = _hash_file_safely(path_obj)
         file_size = _stat_size_safely(path_obj)
         stored_path = _to_relative_posix(image_path, input_dir)
+        uploaded_file_id = _find_uploaded_file_id(
+            session,
+            upload_batch_id=upload_batch_id,
+            stored_path=stored_path,
+            absolute_path=image_path,
+        )
 
         if stored_path in existing:
             page = existing[stored_path]
             page.page_no = idx
             page.image_name = image_name
+            if uploaded_file_id is not None:
+                page.uploaded_file_id = uploaded_file_id
             if file_hash:
                 page.file_hash = file_hash
             if file_size is not None:
@@ -286,6 +328,7 @@ def upsert_pages(
             session.add(
                 ArchivePage(
                     archive_id=archive_id,
+                    uploaded_file_id=uploaded_file_id,
                     page_no=idx,
                     image_path=stored_path,
                     image_name=image_name,
@@ -341,28 +384,85 @@ def _stat_size_safely(path: Path) -> Optional[int]:
         return None
 
 
+def _find_uploaded_file_id(
+    session: Session,
+    *,
+    upload_batch_id: Optional[int],
+    stored_path: str,
+    absolute_path: str,
+) -> Optional[int]:
+    if upload_batch_id is None:
+        return None
+    candidates = {stored_path.replace("\\", "/"), absolute_path.replace("\\", "/")}
+    for candidate in candidates:
+        row = session.scalar(
+            select(UploadedFile).where(
+                UploadedFile.upload_batch_id == upload_batch_id,
+                UploadedFile.stored_path == candidate,
+            )
+        )
+        if row is not None:
+            return row.id
+    return None
+
+
 # ── 处理任务 ─────────────────────────────────────────────────────────────────
 def record_job_start(
     session: Session,
     *,
     batch_id: int,
-    archive_id: int,
-    job_type: str = "archive_classify",
+    project_id: int,
+    document_key: str,
+    upload_batch_id: Optional[int] = None,
+    page_count: int = 0,
+    archive_id: Optional[int] = None,
 ) -> ProcessingJob:
-    job = ProcessingJob(
-        batch_id=batch_id,
-        archive_id=archive_id,
-        job_type=job_type,
-        processing_status="running",
-        attempt_count=0,
-        started_at=datetime.now(timezone.utc),
+    job = session.scalar(
+        select(ProcessingJob).where(
+            ProcessingJob.batch_id == batch_id,
+            ProcessingJob.document_key == document_key,
+        )
     )
+    if job is None:
+        job = ProcessingJob(
+            batch_id=batch_id,
+            project_id=project_id,
+            upload_batch_id=upload_batch_id,
+            archive_id=archive_id,
+            document_key=document_key,
+            page_count=page_count,
+            processing_status="ocr_running",
+            progress=10,
+            current_stage="ocr",
+            attempt_count=0,
+            started_at=datetime.now(timezone.utc),
+        )
+        session.add(job)
+    else:
+        job.project_id = project_id
+        job.upload_batch_id = upload_batch_id or job.upload_batch_id
+        job.archive_id = archive_id or job.archive_id
+        job.page_count = page_count or job.page_count
+        job.status = "ocr_running"
+        job.progress = max(job.progress or 0, 10)
+        job.current_stage = "ocr"
+        if job.started_at is None:
+            job.started_at = datetime.now(timezone.utc)
+    job.attempt_count = (job.attempt_count or 0) + 1
     session.add(job)
     session.flush()
+    record_processing_event(
+        session,
+        batch_id=batch_id,
+        job_id=job.id,
+        event_type="stage_started",
+        stage="ocr",
+        message=f"开始处理档案 {document_key}",
+    )
     return job
 
 
-def record_job_attempt(
+def mark_job_complete(
     session: Session,
     *,
     job: ProcessingJob,
@@ -370,25 +470,52 @@ def record_job_attempt(
     error_code: Optional[str] = None,
     error_message: Optional[str] = None,
     traceback_text: Optional[str] = None,
-) -> ProcessingJobAttempt:
-    job.attempt_count = (job.attempt_count or 0) + 1
-    attempt = ProcessingJobAttempt(
+) -> ProcessingJob:
+    del traceback_text
+    job.status = status
+    job.error_code = error_code
+    job.error_message = error_message
+    job.current_stage = "done" if status == "success" else "failed"
+    job.progress = 100 if status == "success" else max(job.progress or 0, 90)
+    job.finished_at = datetime.now(timezone.utc)
+    record_processing_event(
+        session,
+        batch_id=job.batch_id,
         job_id=job.id,
-        attempt_no=job.attempt_count,
-        processing_status=status,
-        error_code=error_code,
-        error_message=error_message,
-        traceback_text=traceback_text,
-        started_at=job.started_at,
-        finished_at=datetime.now(timezone.utc),
+        event_type="stage_finished" if status == "success" else "error",
+        stage=job.current_stage,
+        message="处理成功" if status == "success" else (error_message or "处理失败"),
+        payload={"error_code": error_code} if error_code else None,
     )
-    session.add(attempt)
+    return job
 
-    job.processing_status = status
-    job.last_error_code = error_code
-    job.last_error_message = error_message
-    job.finished_at = attempt.finished_at
-    return attempt
+
+def record_job_attempt(*args, **kwargs):
+    """Backward-compatible alias kept for old callers."""
+    return mark_job_complete(*args, **kwargs)
+
+
+def record_processing_event(
+    session: Session,
+    *,
+    batch_id: int,
+    event_type: str,
+    stage: Optional[str] = None,
+    message: Optional[str] = None,
+    payload: Optional[dict[str, Any]] = None,
+    job_id: Optional[int] = None,
+) -> ProcessingEvent:
+    event = ProcessingEvent(
+        batch_id=batch_id,
+        job_id=job_id,
+        event_type=event_type,
+        stage=stage,
+        message=message,
+        payload=payload,
+    )
+    session.add(event)
+    session.flush()
+    return event
 
 
 # ── 应用分类结果 ─────────────────────────────────────────────────────────────
@@ -519,14 +646,21 @@ def record_export_file(
     template_name: Optional[str] = None,
     row_count: Optional[int] = None,
     file_hash: Optional[str] = None,
+    project_id: Optional[int] = None,
+    created_by: Optional[int] = None,
 ) -> ExportFile:
+    if project_id is None:
+        batch = session.get(ProcessingBatch, batch_id)
+        project_id = batch.project_id if batch is not None else None
     record = ExportFile(
+        project_id=project_id,
         batch_id=batch_id,
         export_type=export_type,
         file_path=file_path,
         template_name=template_name,
         row_count=row_count,
         file_hash=file_hash,
+        created_by=created_by,
     )
     session.add(record)
     session.flush()
@@ -544,10 +678,13 @@ __all__ = [
     "upsert_pages",
     "record_job_start",
     "record_job_attempt",
+    "mark_job_complete",
+    "record_processing_event",
     "apply_classification_result",
     "mark_archive_status",
     "assign_sequence",
     "record_export_file",
+    "record_llm_trace",
     "next_revision_no",
     "record_revisions",
     "record_audit_log",
@@ -595,6 +732,7 @@ def record_revisions(
     revisions: Iterable[FieldRevision],
     actor_user_id: Optional[int] = None,
     reason: Optional[str] = None,
+    source: Optional[str] = None,
     revision_no: Optional[int] = None,
 ) -> int:
     """把一组字段 diff 写成同一 revision_no 的多行;返回该 revision_no。
@@ -618,6 +756,7 @@ def record_revisions(
                 old_value=rev.old_value,
                 new_value=rev.new_value,
                 reason=reason,
+                source=source,
                 created_by=actor_user_id,
             )
         )
@@ -629,21 +768,29 @@ def record_audit_log(
     session: Session,
     *,
     actor_user_id: Optional[int] = None,
+    organization_id: Optional[int] = None,
+    project_id: Optional[int] = None,
     action: str,
     target_type: Optional[str] = None,
     target_id: Optional[int] = None,
     before_data: Optional[Any] = None,
     after_data: Optional[Any] = None,
+    message: Optional[str] = None,
+    payload: Optional[Any] = None,
     ip_address: Optional[str] = None,
     user_agent: Optional[str] = None,
 ) -> AuditLog:
     log = AuditLog(
+        organization_id=organization_id,
+        project_id=project_id,
         actor_user_id=actor_user_id,
         action=action,
         target_type=target_type,
         target_id=target_id,
         before_data=before_data,
         after_data=after_data,
+        message=message,
+        payload=payload,
         ip_address=ip_address,
         user_agent=user_agent,
     )
@@ -716,6 +863,8 @@ def apply_force_rerun_rules(
     record_audit_log(
         session,
         actor_user_id=actor_user_id,
+        organization_id=archive.organization_id,
+        project_id=archive.project_id,
         action="force_rerun_rules",
         target_type="archive",
         target_id=archive.id,
@@ -793,6 +942,8 @@ def apply_manual_correction(
     record_audit_log(
         session,
         actor_user_id=actor_user_id,
+        organization_id=archive.organization_id,
+        project_id=archive.project_id,
         action="manual_correction",
         target_type="archive",
         target_id=archive.id,
@@ -800,3 +951,37 @@ def apply_manual_correction(
         after_data=new_final,
     )
     return rev_no
+
+
+def record_llm_trace(
+    session: Session,
+    *,
+    archive: ArchiveRecord,
+    job_id: Optional[int],
+    call_type: str,
+    trace: Any,
+) -> Optional[LlmTrace]:
+    raw = getattr(trace, "raw_response", None)
+    cleaned = getattr(trace, "cleaned_response", None)
+    strategy = getattr(trace, "parse_strategy", None)
+    if raw is None and cleaned is None and strategy is None:
+        return None
+    row = LlmTrace(
+        archive_id=archive.id,
+        job_id=job_id,
+        call_type=call_type,
+        model_name=getattr(trace, "model_name", None),
+        prompt_hash=getattr(trace, "prompt_hash", None),
+        raw_response=raw,
+        cleaned_response=cleaned,
+        parse_strategy=strategy,
+        success=strategy != "failed",
+        error_message=getattr(trace, "error_message", None),
+    )
+    session.add(row)
+    archive.llm_raw_response = raw
+    archive.llm_cleaned_response = cleaned
+    if strategy:
+        archive.llm_parse_strategy = strategy
+    session.flush()
+    return row

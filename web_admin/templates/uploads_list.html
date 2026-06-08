@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}上传与在线跑批 - FileForge 管理后台{% endblock %}
+{% block content %}
+<h1>上传与在线跑批</h1>
+
+{% if error %}
+<p class="error">{{ error }}</p>
+{% endif %}
+
+<section class="panel">
+  <h2>新建上传</h2>
+  {% if projects %}
+  <form method="post" action="/uploads" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="project_id">项目</label>
+    <select id="project_id" name="project_id" required>
+      {% for project in projects %}
+      <option value="{{ project.id }}">{{ project.project_key }}{% if project.project_name %} - {{ project.project_name }}{% endif %}</option>
+      {% endfor %}
+    </select>
+    <label for="upload_name">上传名称</label>
+    <input id="upload_name" name="upload_name" type="text" maxlength="255">
+    <label for="files">文件</label>
+    <input id="files" name="files" type="file" accept=".jpg,.jpeg,.png,.bmp,.tiff,.tif,.zip" multiple required>
+    <button type="submit">上传</button>
+  </form>
+  {% else %}
+  <p class="empty-state">暂无可用项目</p>
+  {% endif %}
+</section>
+
+<h2>上传记录</h2>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>名称</th>
+      <th>状态</th>
+      <th>文件数</th>
+      <th>档案数</th>
+      <th>保存目录</th>
+      <th>创建时间</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for upload in result.items %}
+    <tr>
+      <td>{{ upload.id }}</td>
+      <td>{{ upload.upload_name }}</td>
+      <td><span class="status-badge status-{{ upload.status }}">{{ upload.status }}</span></td>
+      <td>{{ upload.file_count }}</td>
+      <td>{{ upload.document_count }}</td>
+      <td class="path-cell">{{ upload.storage_root }}</td>
+      <td>{{ upload.created_at }}</td>
+      <td>
+        {% if upload.status in ["uploaded", "validated", "failed"] %}
+        <form method="post" action="/uploads/{{ upload.id }}/start" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit">开始处理</button>
+        </form>
+        {% else %}
+        <span class="muted">{{ upload.status }}</span>
+        {% endif %}
+        {% if upload.error_message %}
+        <div class="error">{{ upload.error_message }}</div>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="8" class="empty-state">暂无上传记录</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

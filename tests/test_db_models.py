@@ -19,12 +19,15 @@ try:
         AuditLog,
         Base,
         ExportFile,
+        LlmTrace,
         MetadataRevision,
         ProcessingBatch,
+        ProcessingEvent,
         ProcessingJob,
-        ProcessingJobAttempt,
         Project,
         SequenceCounter,
+        UploadBatch,
+        UploadedFile,
     )
 except ImportError as _exc:  # pragma: no cover - exercised when sqlalchemy 不在环境中
     SQLALCHEMY_AVAILABLE = False
@@ -65,9 +68,19 @@ class TestDbModels(unittest.TestCase):
             session.add(batch)
             session.flush()
 
+            upload = UploadBatch(
+                project_id=project.id,
+                upload_name="demo upload",
+                storage_root="/tmp/in",
+                status="uploaded",
+            )
+            session.add(upload)
+            session.flush()
+
             archive = ArchiveRecord(
                 project_id=project.id,
                 batch_id=batch.id,
+                upload_batch_id=upload.id,
                 archive_key="folder_a",
                 archive_name="folder_a",
                 page_count=2,
@@ -79,10 +92,21 @@ class TestDbModels(unittest.TestCase):
             session.add(archive)
             session.flush()
 
+            uploaded = UploadedFile(
+                upload_batch_id=upload.id,
+                original_filename="folder_a/0001.jpg",
+                stored_path="/tmp/in/folder_a/0001.jpg",
+                file_ext=".jpg",
+                document_key="folder_a",
+            )
+            session.add(uploaded)
+            session.flush()
+
             session.add_all(
                 [
                     ArchivePage(
                         archive_id=archive.id,
+                        uploaded_file_id=uploaded.id,
                         page_no=1,
                         image_path="a/0001.jpg",
                         image_name="0001.jpg",
@@ -98,13 +122,32 @@ class TestDbModels(unittest.TestCase):
                 ]
             )
             job = ProcessingJob(
-                batch_id=batch.id, archive_id=archive.id, processing_status="success"
+                batch_id=batch.id,
+                project_id=project.id,
+                upload_batch_id=upload.id,
+                archive_id=archive.id,
+                document_key="folder_a",
+                processing_status="success",
             )
             session.add(job)
             session.flush()
+            archive.job_id = job.id
             session.add(
-                ProcessingJobAttempt(
-                    job_id=job.id, attempt_no=1, processing_status="success"
+                ProcessingEvent(
+                    batch_id=batch.id,
+                    job_id=job.id,
+                    event_type="stage_finished",
+                    stage="done",
+                    message="处理成功",
+                )
+            )
+            session.add(
+                LlmTrace(
+                    archive_id=archive.id,
+                    job_id=job.id,
+                    call_type="metadata_extract",
+                    parse_strategy="json",
+                    success=True,
                 )
             )
             session.add(

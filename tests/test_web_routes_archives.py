@@ -314,7 +314,7 @@ class TestArchiveEditRoute(unittest.TestCase):
                     "题名": "原题名",
                     "立档单位名称": "县档案馆",
                 },
-                correction_status="pending",
+                correction_status="none",
             )
             archive_b = ArchiveRecord(
                 project_id=project_b.id,
@@ -358,28 +358,34 @@ class TestArchiveEditRoute(unittest.TestCase):
         self.assertTrue(resp.headers["location"].endswith("/login"))
 
     def test_get_edit_form_missing_permission_returns_403(self):
-        from infrastructure.db.models import AppUser, Role, UserRole
+        old_operator_role = accounts.BUILTIN_ROLES["org_operator"]
         with self.Session() as session:
-            role = Role(code="readonly", name="只读")
-            session.add(role)
-            session.flush()
             accounts.create_user(
                 session,
                 username="readonly_user",
                 password="readonly-strong-pw",
                 display_name="只读用户",
-                role_codes=[],
+                role_codes=["org_operator"],
             )
-            user = session.query(AppUser).filter_by(username="readonly_user").first()
-            session.add(UserRole(user_id=user.id, role_id=role.id))
             session.commit()
-        with TestClient(self.app) as client:
-            self._login(client, "readonly_user", "readonly-strong-pw")
-            resp = client.get(
-                f"/archives/{self.archive_a_id}/edit",
-                follow_redirects=False,
+        try:
+            accounts.BUILTIN_ROLES["org_operator"] = (
+                old_operator_role[0],
+                tuple(
+                    permission
+                    for permission in old_operator_role[1]
+                    if permission != "archive:correct"
+                ),
             )
-        self.assertEqual(resp.status_code, 403)
+            with TestClient(self.app) as client:
+                self._login(client, "readonly_user", "readonly-strong-pw")
+                resp = client.get(
+                    f"/archives/{self.archive_a_id}/edit",
+                    follow_redirects=False,
+                )
+            self.assertEqual(resp.status_code, 403)
+        finally:
+            accounts.BUILTIN_ROLES["org_operator"] = old_operator_role
 
     def test_get_edit_form_cross_org_returns_404(self):
         with TestClient(self.app) as client:

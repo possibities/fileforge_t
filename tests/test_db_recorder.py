@@ -24,9 +24,10 @@ try:
         ArchivePage,
         ArchiveRecord,
         Base,
+        LlmTrace,
         ProcessingBatch,
+        ProcessingEvent,
         ProcessingJob,
-        ProcessingJobAttempt,
     )
     from infrastructure.db.recorder import BatchRecorder
     from processors.batch_processor import BatchProcessor
@@ -126,7 +127,7 @@ class TestBatchRecorder(unittest.TestCase):
             self.assertEqual(archive.result_filename, "0001_demo_archive_result.json")
 
             batch = session.scalar(select(ProcessingBatch))
-            self.assertEqual(batch.batch_status, "completed")
+            self.assertEqual(batch.batch_status, "success")
             self.assertEqual(batch.success_count, 1)
             self.assertEqual(batch.fail_count, 0)
             self.assertEqual(batch.total_archives, 1)
@@ -135,9 +136,12 @@ class TestBatchRecorder(unittest.TestCase):
             self.assertEqual(job.processing_status, "success")
             self.assertEqual(job.attempt_count, 1)
 
-            attempt = session.scalar(select(ProcessingJobAttempt))
-            self.assertEqual(attempt.processing_status, "success")
-            self.assertEqual(attempt.attempt_no, 1)
+            events = session.scalars(
+                select(ProcessingEvent).where(ProcessingEvent.job_id == job.id)
+            ).all()
+            self.assertGreaterEqual(len(events), 2)
+            self.assertIn("stage_started", {event.event_type for event in events})
+            self.assertIn("stage_finished", {event.event_type for event in events})
 
     def test_skip_success_on_rerun(self):
         # 第一次：正常跑
@@ -223,6 +227,9 @@ class TestBatchRecorder(unittest.TestCase):
             self.assertEqual(archive.llm_raw_response, '{"题名": "v",}')
             self.assertEqual(archive.llm_cleaned_response, '{"题名": "v",}')
             self.assertEqual(archive.llm_parse_strategy, "repaired")
+            trace_row = session.scalar(select(LlmTrace))
+            self.assertIsNotNone(trace_row)
+            self.assertEqual(trace_row.parse_strategy, "repaired")
 
     def test_llm_trace_absent_leaves_columns_null(self):
         recorder = self._make_recorder()

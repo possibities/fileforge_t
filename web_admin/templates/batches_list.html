@@ -11,7 +11,7 @@
     状态
     <select name="status_filter">
       <option value="">全部</option>
-      {% for status_code in ["running", "completed", "aborted"] %}
+      {% for status_code in ["queued", "running", "success", "partial_failed", "failed", "cancelled", "completed", "aborted"] %}
       <option value="{{ status_code }}"{% if selected_status == status_code %} selected{% endif %}>{{ status_code }}</option>
       {% endfor %}
     </select>
@@ -52,7 +52,12 @@
       <td>{{ batch.fail_count }}</td>
       <td>{{ batch.started_at or "" }}</td>
       <td>{{ batch.finished_at or "" }}</td>
-      <td><a href="/batches/{{ batch.id }}">详情</a></td>
+      <td>
+        <a href="/batches/{{ batch.id }}">详情</a>
+        {% if batch.trigger_type == "web_upload" %}
+        <a href="/processing/batches/{{ batch.id }}">进度</a>
+        {% endif %}
+      </td>
     </tr>
     {% endfor %}
   </tbody>

@@ -11,10 +11,6 @@ from infrastructure.db import accounts
 from infrastructure.db.models import (
     AppUser,
     Organization,
-    Permission,
-    Role,
-    RolePermission,
-    UserRole,
     WebSession,
 )
 
@@ -52,24 +48,20 @@ def _as_aware_utc(value: datetime) -> datetime:
 
 
 def _role_codes(session: Session, user_id: int) -> list[str]:
-    rows = session.execute(
-        select(Role.code)
-        .join(UserRole, UserRole.role_id == Role.id)
-        .where(UserRole.user_id == user_id)
-        .order_by(Role.code.asc())
-    ).all()
-    return [row[0] for row in rows]
+    user = session.get(AppUser, user_id)
+    if user is None:
+        return []
+    return [user.role]
 
 
 def _permission_codes(session: Session, user_id: int) -> list[str]:
-    rows = session.execute(
-        select(Permission.code)
-        .join(RolePermission, RolePermission.permission_id == Permission.id)
-        .join(UserRole, UserRole.role_id == RolePermission.role_id)
-        .where(UserRole.user_id == user_id)
-        .order_by(Permission.code.asc())
-    ).all()
-    return [row[0] for row in rows]
+    user = session.get(AppUser, user_id)
+    if user is None:
+        return []
+    role_def = accounts.BUILTIN_ROLES.get(user.role)
+    if role_def is None:
+        return []
+    return sorted(role_def[1])
 
 
 def _current_user_from_app_user(session: Session, user: AppUser) -> CurrentUser:

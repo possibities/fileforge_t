@@ -8,6 +8,9 @@
   --accent: #1f6feb;
   --accent-dark: #174ea6;
   --danger: #b42318;
+  --success: #067647;
+  --warning: #b54708;
+  --neutral: #475467;
 }
 
 * {
@@ -117,6 +120,29 @@ button:hover {
   background: var(--accent-dark);
 }
 
+button.secondary,
+.button-link {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--text);
+}
+
+button.secondary:hover,
+.button-link:hover {
+  border-color: var(--accent);
+  background: #eef4ff;
+  text-decoration: none;
+}
+
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  margin-right: 8px;
+  border-radius: 4px;
+  padding: 6px 12px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -146,6 +172,117 @@ dl {
   padding: 16px;
   border: 1px solid var(--line);
   background: var(--panel);
+}
+
+.summary-list {
+  max-width: 720px;
+}
+
+.panel {
+  margin: 12px 0 20px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  max-width: 760px;
+  margin: 0 0 24px;
+}
+
+.action-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.action-link.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.action-link:hover {
+  border-color: var(--accent);
+  text-decoration: none;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 4px;
+  padding: 2px 8px;
+  background: #eef2f7;
+  color: var(--neutral);
+  font-weight: 700;
+}
+
+.status-success,
+.status-completed,
+.status-processed,
+.status-uploaded,
+.status-validated {
+  background: #ecfdf3;
+  color: var(--success);
+}
+
+.status-failed,
+.status-error,
+.status-aborted {
+  background: #fef3f2;
+  color: var(--danger);
+}
+
+.status-running,
+.status-processing,
+.status-queued,
+.status-uploading,
+.status-ocr_running,
+.status-llm_running,
+.status-rules_running,
+.status-exporting {
+  background: #fff7ed;
+  color: var(--warning);
+}
+
+.progress-meter {
+  width: 160px;
+  max-width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #e4e7ec;
+}
+
+.progress-meter span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.path-cell {
+  max-width: 360px;
+  overflow-wrap: anywhere;
+}
+
+.muted,
+.empty-state {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--danger);
+  font-weight: 700;
 }
 
 dt {

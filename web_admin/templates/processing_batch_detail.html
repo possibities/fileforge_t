@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}在线跑批进度 - FileForge 管理后台{% endblock %}
+{% block head_extra %}
+{% if batch.batch_status in ["queued", "running"] %}
+  <meta http-equiv="refresh" content="5">
+{% endif %}
+{% endblock %}
+{% block content %}
+<h1>在线跑批进度</h1>
+
+<dl class="summary-list">
+  <dt>项目</dt>
+  <dd>{{ project.project_key }}</dd>
+  <dt>批次</dt>
+  <dd>{{ batch.batch_key }}</dd>
+  <dt>状态</dt>
+  <dd><span class="status-badge status-{{ batch.batch_status }}">{{ batch.batch_status }}</span></dd>
+  <dt>输入目录</dt>
+  <dd>{{ batch.input_dir or "" }}</dd>
+  <dt>输出目录</dt>
+  <dd>{{ batch.output_dir or "" }}</dd>
+  <dt>统计</dt>
+  <dd>总档案 {{ batch.total_archives }}，成功 {{ batch.success_count }}，失败 {{ batch.fail_count }}</dd>
+</dl>
+
+<p>
+  <a class="button-link" href="/batches/{{ batch.id }}">批次详情</a>
+  <a class="button-link" href="/batches/{{ batch.id }}/archives">查看档案结果</a>
+</p>
+
+<h2>任务</h2>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>档案键</th>
+      <th>状态</th>
+      <th>进度</th>
+      <th>阶段</th>
+      <th>页数</th>
+      <th>错误</th>
+      <th>结果</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for job in jobs.items %}
+    <tr>
+      <td>{{ job.id }}</td>
+      <td>{{ job.document_key }}</td>
+      <td><span class="status-badge status-{{ job.status }}">{{ job.status }}</span></td>
+      <td>
+        <div class="progress-meter" aria-label="进度 {{ job.progress }}%">
+          <span style="width: {{ job.progress }}%"></span>
+        </div>
+        <span class="muted">{{ job.progress }}%</span>
+      </td>
+      <td>{{ job.current_stage or "" }}</td>
+      <td>{{ job.page_count }}</td>
+      <td>{{ job.error_code or job.error_message or "" }}</td>
+      <td>
+        {% if job.archive_id %}
+        <a href="/archives/{{ job.archive_id }}">档案详情</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="8" class="empty-state">暂无任务</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>事件</h2>
+<table>
+  <thead>
+    <tr>
+      <th>时间</th>
+      <th>类型</th>
+      <th>阶段</th>
+      <th>消息</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for event in events %}
+    <tr>
+      <td>{{ event.created_at }}</td>
+      <td>{{ event.event_type }}</td>
+      <td>{{ event.stage or "" }}</td>
+      <td>{{ event.message or "" }}</td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="4" class="empty-state">暂无事件</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -16,15 +16,7 @@ from typing import Iterable, Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import (
-    AppUser,
-    Organization,
-    ORGANIZATION_STATUS,
-    Permission,
-    Role,
-    RolePermission,
-    UserRole,
-)
+from .models import APP_USER_ROLE, AppUser, Organization, ORGANIZATION_STATUS
 
 
 PASSWORD_SCHEME = "pbkdf2_sha256"
@@ -77,6 +69,12 @@ BUILTIN_ROLES: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
 }
+
+
+@dataclass(frozen=True)
+class RoleChoice:
+    code: str
+    name: str
 
 
 @dataclass(frozen=True)
@@ -145,39 +143,20 @@ def verify_password(password: str, stored_hash: str) -> bool:
 
 
 def ensure_builtin_roles(session: Session) -> None:
-    permissions: dict[str, Permission] = {}
-    for code, description in BUILTIN_PERMISSIONS.items():
-        permission = session.scalar(select(Permission).where(Permission.code == code))
-        if permission is None:
-            permission = Permission(code=code, description=description)
-            session.add(permission)
-            session.flush()
-        permissions[code] = permission
+    """Compatibility hook for the old CLI.
 
-    for code, (name, permission_codes) in BUILTIN_ROLES.items():
-        role = session.scalar(select(Role).where(Role.code == code))
-        if role is None:
-            role = Role(code=code, name=name)
-            session.add(role)
-            session.flush()
-        else:
-            role.name = name
-        existing = {
-            row.permission_id
-            for row in session.scalars(
-                select(RolePermission).where(RolePermission.role_id == role.id)
-            )
-        }
-        for permission_code in permission_codes:
-            permission_id = permissions[permission_code].id
-            if permission_id not in existing:
-                session.add(
-                    RolePermission(role_id=role.id, permission_id=permission_id)
-                )
+    Roles and permissions are now code-level constants mapped from
+    ``app_users.role``. There is no seed data to write.
+    """
+    return None
 
 
-def list_roles(session: Session) -> list[Role]:
-    return list(session.scalars(select(Role).order_by(Role.code.asc())).all())
+def list_roles(session: Session) -> list[RoleChoice]:
+    del session
+    return [
+        RoleChoice(code=code, name=value[0])
+        for code, value in sorted(BUILTIN_ROLES.items())
+    ]
 
 
 def create_organization(session: Session, *, name: str) -> Organization:
@@ -231,11 +210,11 @@ def set_organization_status(
     org.status = status
 
 
-def _get_role_by_code(session: Session, code: str) -> Role:
-    role = session.scalar(select(Role).where(Role.code == code))
-    if role is None:
+def _validate_role_code(code: str) -> str:
+    clean = (code or "").strip()
+    if clean not in APP_USER_ROLE:
         raise ValueError(f"unknown role: {code}")
-    return role
+    return clean
 
 
 def _get_user_by_username(session: Session, username: str) -> Optional[AppUser]:
@@ -257,30 +236,27 @@ def create_user(
     if _get_user_by_username(session, username) is not None:
         raise ValueError(f"username already exists: {username}")
 
-    roles = [_get_role_by_code(session, code) for code in (role_codes or [])]
+    role = "org_operator"
+    if role_codes:
+        role = _validate_role_code(role_codes[0])
     user = AppUser(
         username=username,
         password_hash=hash_password(password),
         display_name=display_name,
         organization_id=organization_id,
+        role=role,
         status="active",
     )
     session.add(user)
-    session.flush()
-    for role in roles:
-        session.add(UserRole(user_id=user.id, role_id=role.id))
     session.flush()
     return user
 
 
 def _role_codes_for_user(session: Session, user_id: int) -> list[str]:
-    rows = session.execute(
-        select(Role.code)
-        .join(UserRole, UserRole.role_id == Role.id)
-        .where(UserRole.user_id == user_id)
-        .order_by(Role.code.asc())
-    ).all()
-    return [row[0] for row in rows]
+    user = session.get(AppUser, user_id)
+    if user is None:
+        return []
+    return [user.role]
 
 
 def list_users(session: Session) -> list[UserRow]:
@@ -339,6 +315,7 @@ __all__ = [
     "BUILTIN_PERMISSIONS",
     "BUILTIN_ROLES",
     "MIN_PASSWORD_LENGTH",
+    "RoleChoice",
     "UserRow",
     "OrganizationRow",
     "hash_password",

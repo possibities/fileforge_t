@@ -33,10 +33,7 @@ class TestAccountModels(unittest.TestCase):
         expected = {
             "organizations",
             "app_users",
-            "roles",
-            "permissions",
-            "user_roles",
-            "role_permissions",
+            "web_sessions",
         }
         self.assertTrue(expected.issubset(set(Base.metadata.tables)))
 
@@ -53,17 +50,14 @@ class TestAccountModels(unittest.TestCase):
 
     def test_unique_constraints_exist_for_key_account_fields(self):
         users = Base.metadata.tables["app_users"]
-        roles = Base.metadata.tables["roles"]
-        permissions = Base.metadata.tables["permissions"]
         constraints = {
             c.name
-            for table in (users, roles, permissions)
+            for table in (users,)
             for c in table.constraints
             if c.name
         }
         self.assertIn("uq_app_users_username", constraints)
-        self.assertIn("uq_roles_code", constraints)
-        self.assertIn("uq_permissions_code", constraints)
+        self.assertIn("role", users.c)
 
 
 if __name__ == "__main__":

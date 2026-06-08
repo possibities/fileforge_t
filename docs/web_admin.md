@@ -1,18 +1,18 @@
 # Web 管理后台运行说明
 
-本文说明当前 `web_admin/` 服务端渲染后台的实际运行方式。它只使用 PostgreSQL 数据库,不启动 OCR、PaddleOCR、vLLM,也不运行完整管线 `python main.py`。
+本文说明当前 `web_admin/` 服务端渲染后台的实际运行方式。Web 后台依赖 PostgreSQL；浏览、用户管理、项目管理、人工修正只需要 Web/DB 依赖，浏览器上传后启动在线跑批时才需要 PaddleOCR、vLLM 和完整管线运行环境。
 
 ## 1 安装依赖
 
-Web 后台依赖数据库层和 FastAPI/Jinja2:
+只运行后台页面:
 
 ```bash
 pip install -r requirements/web.txt
 ```
 
-`requirements/web.txt` 会引用 `requirements/db.txt`。PaddlePaddle、vLLM、微调依赖不属于 Web 后台启动前置条件。
+`requirements/web.txt` 会引用 `requirements/db.txt`。如果要在 Web 中点击“开始处理”执行 OCR/LLM 跑批，还需要按部署文档安装 OCR/GPU/vLLM 相关依赖，并确保 vLLM OpenAI 兼容服务可访问。
 
-## 2 配置数据库
+## 2 配置数据库和 Web
 
 正式运行使用 PostgreSQL:
 
@@ -33,9 +33,13 @@ export WEB_SESSION_COOKIE_NAME="fileforge_session"
 export WEB_SESSION_TTL_SECONDS="28800"
 export WEB_COOKIE_SECURE="false"
 export WEB_CSRF_ENABLED="true"
+export WEB_UPLOAD_STORAGE_ROOT="input_documents/web_uploads"
+export WEB_PROCESSING_OUTPUT_ROOT="output_results/web_runs"
+export WEB_MAX_UPLOAD_BYTES="209715200"
+export WEB_MAX_UPLOAD_FILES="2000"
 ```
 
-生产 HTTPS 后应把 `WEB_COOKIE_SECURE=true`。
+生产 HTTPS 后应把 `WEB_COOKIE_SECURE=true`。`WEB_UPLOAD_STORAGE_ROOT` 保存上传原图，`WEB_PROCESSING_OUTPUT_ROOT` 保存在线跑批导出的 JSON/CSV。
 
 ## 3 建表迁移
 
@@ -45,19 +49,21 @@ export WEB_CSRF_ENABLED="true"
 alembic upgrade head
 ```
 
-当前 Web 后台需要以下账号和 session 表已经存在:
+当前 schema 由 `0005_rebuild_upload_online_processing` 重建。项目没有生产数据，因此该迁移会删除除 `alembic_version` 外的旧应用表，再按当前 ORM 建表。
 
-- `organizations`
-- `app_users`
-- `roles`
-- `permissions`
-- `user_roles`
-- `role_permissions`
-- `web_sessions`
+当前 Web 后台需要的核心表:
+
+- 账号与会话:`organizations`、`app_users`、`web_sessions`
+- 上传:`upload_batches`、`uploaded_files`
+- 处理:`processing_batches`、`processing_jobs`、`processing_events`
+- 结果:`archive_records`、`archive_pages`、`llm_traces`
+- 序号、导出、追溯:`sequence_counters`、`export_files`、`metadata_revisions`、`audit_logs`
+
+角色权限已简化为 `app_users.role` 字段。`python -m utils.user_admin roles init` 仍可执行，但只是兼容命令，不再向独立 RBAC 表写 seed 数据。
 
 ## 4 初始化管理员
 
-当前仓库没有 `web_admin.manage` 模块。账号初始化使用已落地的 CLI:
+账号初始化使用 CLI:
 
 ```bash
 python -m utils.user_admin roles init
@@ -94,54 +100,83 @@ uvicorn web_admin.app:create_app --factory --host 0.0.0.0 --port 8080
 http://127.0.0.1:8080/login
 ```
 
-## 6 当前页面范围
+## 6 上传和在线跑批
 
-当前 Web 后台已经有以下页面和路由:
+在线跑批路径:
+
+1. 登录后台。
+2. 进入 `/admin/projects` 创建或确认项目。
+3. 进入 `/uploads`。
+4. 选择项目,上传散图或 zip。
+5. 上传成功后点击“开始处理”。
+6. 系统创建 `processing_batches` 和 `processing_jobs`。
+7. FastAPI background task 调用 `run_upload_processing_batch`。
+8. 后台任务复用 `ArchiveClassifier + BatchProcessor + BatchRecorder` 完成 OCR、LLM、规则、导出和入库。
+9. 进入 `/processing/batches/{batch_id}` 查看任务进度、事件和结果入口。
+
+zip 上传约定:一级目录表示一份档案；散图上传会被归为同一份档案。
+
+也可以用 CLI 处理已经上传成功的批次，适合演示补跑或未来独立 worker 过渡:
+
+```bash
+python -m utils.processing_runner --upload-batch-id 1
+```
+
+该命令会创建同样的 `processing_batches` / `processing_jobs`，再复用 Web 后台任务的处理函数；它不是第二套 OCR/LLM 抽取逻辑。
+
+## 7 当前页面范围
 
 - `/login`: 登录页。
 - `/`: 登录后的后台首页。
+- `/uploads`: 上传图片/zip、查看上传批次、启动处理。
+- `/processing/batches/{batch_id}`: 在线跑批进度、任务列表和事件流。
 - `/admin/users`: 用户列表。
 - `/admin/users/new`: 新建用户。
 - `/admin/users/{user_id}/reset-password`: 重置密码。
+- `/admin/organizations`: 单位列表。
+- `/admin/organizations/new`: 新建单位。
+- `/admin/organizations/{organization_id}/disable` 与 `/enable`: 切单位 status。
+- `/admin/projects`: 项目列表。
+- `/admin/projects/new`: 新建项目。
+- `/admin/projects/{project_id}/disable` 与 `/enable`: 切项目 status。
 - `/batches`: 按 `project_key` 查询批次。
 - `/batches/{batch_id}`: 批次详情。
 - `/batches/{batch_id}/archives`: 批次下档案列表和筛选。
-- `/archives/{archive_id}`: 档案详情;通过 `?notice=no_change` 显示"无字段变化"提示。
+- `/archives/{archive_id}`: 档案详情;通过 `?notice=no_change` 显示“无字段变化”提示。
 - `/archives/{archive_id}/revisions`: 修订记录。
 - `/archives/{archive_id}/audit`: 审计记录。
-- `/archives/{archive_id}/edit`: 元数据人工修正(GET 表单 + POST 提交);仅允许编辑题名 / 责任者 / 实体分类号 / 保管期限 4 个字段,其余字段在表单内只读展示。提交后写 `metadata_revisions` 与 `audit_logs(action="manual_correction")`,并把 `correction_status` 置为 `corrected`。无差异提交跳转 `/archives/{archive_id}?notice=no_change`。
-- `/admin/organizations`:单位列表(`organization:manage`,即 `platform_admin` 专属)。
-- `/admin/organizations/new`:新建单位表单与提交。
-- `/admin/organizations/{organization_id}/disable` 与 `/enable`:切单位 status,不级联到项目。
-- `/admin/projects`:项目列表;`platform_admin` 可用 `?organization_id=N` 过滤,`org_admin` 自动限本单位。
-- `/admin/projects/new`:新建项目表单;`org_admin` 的 organization_id 在表单与后端均锁定为本单位。
-- `/admin/projects/{project_id}/disable` 与 `/enable`:切项目 status,不级联到批次/档案。
+- `/archives/{archive_id}/edit`: 元数据人工修正(GET 表单 + POST 提交);仅允许编辑题名 / 责任者 / 实体分类号 / 保管期限 4 个字段。
 
-## 7 权限与范围
+## 8 权限与范围
 
 - 登录使用 `app_users` 与 `web_sessions`。
 - cookie 保存明文随机 session token,数据库只保存 `sha256(token)`。
 - POST 表单使用 CSRF token 校验。
 - `platform_admin` 可查看全平台数据。
-- 普通单位用户只能访问本单位 `organization_id` 范围内的数据;批次和档案列表在数据库查询层按组织过滤后再分页。
+- 普通单位用户只能访问本单位 `organization_id` 范围内的数据;跨单位访问统一 404。
+- 上传和启动处理需要 `batch:manage`。
 - 批次、档案、修订记录需要 `archive:view`。
-- 元数据修正(`/archives/{archive_id}/edit` GET 与 POST)需要 `archive:correct`,三个内置角色均已 seed 此权限;非平台管理员只能修正本单位档案。
+- 元数据修正需要 `archive:correct`。
 - 审计记录需要 `audit:view`。
 - 用户管理需要 `user:manage`。
-- 单位管理(`/admin/organizations/*`)需要 `organization:manage`,内置只 seed 给 `platform_admin`。
-- 项目管理(`/admin/projects/*`)需要 `project:manage`,seed 给 `platform_admin` 与 `org_admin`;`org_admin` 仅能看 / 操作本单位项目,跨单位访问统一 404。
-- 非 `platform_admin` 用户若 `app_users.organization_id` 为 NULL,项目页 / 项目操作一律 403(边界守卫,避免单位过滤失效)。
+- 单位管理需要 `organization:manage`。
+- 项目管理需要 `project:manage`。
 
-## 8 当前限制
+内置角色:
 
-- Web 后台不触发 OCR/LLM 跑批。
-- Web 在线修正只覆盖 4 个核心字段(题名 / 责任者 / 实体分类号 / 保管期限);其它字段仍走 CLI `python -m utils.force_rerun_cli ...`。`档号` / `件号` 由 `SequenceGenerator` 分配,任何时候都不开放手工编辑。
+- `platform_admin`: 平台管理员,全权,跨单位。
+- `org_admin`: 单位管理员,管理本单位项目、用户、上传和档案。
+- `org_operator`: 单位操作员,查看本单位档案,可上传跑批和修正核心字段。
+
+## 9 当前限制
+
+- 在线处理现在使用 FastAPI background task,适合毕业设计演示和小规模使用;生产环境建议替换为独立 worker/队列。
+- Web 在线修正只覆盖 4 个核心字段(题名 / 责任者 / 实体分类号 / 保管期限);其它字段仍走规则重跑或后续扩展。
+- `档号` / `件号` 由 `SequenceGenerator` 分配,任何时候都不开放手工编辑。
 - 一期修正采用 last-write-wins,无乐观锁;并发提交都会留痕,后到的覆盖 `final_metadata`。
-- Web 后台不提供项目/单位管理页面。
-- `web_admin.manage` 尚未实现;管理员初始化继续使用 `utils.user_admin`。
 - 当前页面是服务端渲染 HTML,无前端构建链。
 
-## 9 验证建议
+## 10 验证建议
 
 在可运行环境中安装依赖后,至少执行:
 
@@ -149,4 +184,4 @@ http://127.0.0.1:8080/login
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
-本说明不要求启动 PaddleOCR、vLLM 或运行 `python main.py`。
+如果只验证 Web 登录和查询页面,不要求启动 PaddleOCR、vLLM 或运行 `python main.py`。如果验证 `/uploads` 的在线跑批,必须准备可访问的 vLLM 服务和 OCR 运行环境。

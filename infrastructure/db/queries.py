@@ -19,7 +19,10 @@ from .models import (
     AuditLog,
     MetadataRevision,
     ProcessingBatch,
+    ProcessingEvent,
+    ProcessingJob,
     Project,
+    UploadBatch,
 )
 
 T = TypeVar("T")
@@ -57,8 +60,10 @@ class ArchiveFilter:
 class BatchSummary:
     id: int
     project_id: int
+    upload_batch_id: Optional[int]
     batch_key: str
     batch_name: Optional[str]
+    trigger_type: str
     input_dir: Optional[str]
     output_dir: Optional[str]
     batch_status: str
@@ -180,10 +185,60 @@ class AuditLogRow:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class UploadBatchRow:
+    id: int
+    project_id: int
+    uploaded_by: Optional[int]
+    upload_name: str
+    source_type: str
+    status: str
+    file_count: int
+    document_count: int
+    total_size_bytes: int
+    storage_root: str
+    error_message: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class ProcessingJobRow:
+    id: int
+    batch_id: int
+    project_id: int
+    upload_batch_id: Optional[int]
+    archive_id: Optional[int]
+    document_key: str
+    status: str
+    progress: int
+    current_stage: Optional[str]
+    page_count: int
+    error_code: Optional[str]
+    error_message: Optional[str]
+    attempt_count: int
+    started_at: Optional[datetime]
+    finished_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class ProcessingEventRow:
+    id: int
+    job_id: Optional[int]
+    batch_id: int
+    event_type: str
+    stage: Optional[str]
+    message: Optional[str]
+    payload: Optional[dict[str, Any]]
+    created_at: datetime
+
+
 # ── 内部常量 ─────────────────────────────────────────────────────────────────
 _PAGE_SIZE_MIN = 1
 _PAGE_SIZE_MAX = 200
-_AUDIT_TARGET_TYPES_ALLOWED: frozenset[str] = frozenset({"archive"})
+_AUDIT_TARGET_TYPES_ALLOWED: frozenset[str] = frozenset({"archive", "batch", "upload"})
 
 
 # ── 分页 helper ──────────────────────────────────────────────────────────────
@@ -233,8 +288,10 @@ def _batch_to_summary(batch: ProcessingBatch) -> BatchSummary:
     return BatchSummary(
         id=batch.id,
         project_id=batch.project_id,
+        upload_batch_id=batch.upload_batch_id,
         batch_key=batch.batch_key,
         batch_name=batch.batch_name,
+        trigger_type=batch.trigger_type,
         input_dir=batch.input_dir,
         output_dir=batch.output_dir,
         batch_status=batch.batch_status,
@@ -634,6 +691,131 @@ def list_audit_logs(
     )
 
 
+def _upload_batch_to_row(row: UploadBatch) -> UploadBatchRow:
+    return UploadBatchRow(
+        id=row.id,
+        project_id=row.project_id,
+        uploaded_by=row.uploaded_by,
+        upload_name=row.upload_name,
+        source_type=row.source_type,
+        status=row.status,
+        file_count=row.file_count,
+        document_count=row.document_count,
+        total_size_bytes=row.total_size_bytes,
+        storage_root=row.storage_root,
+        error_message=row.error_message,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def list_upload_batches(
+    session: Session,
+    *,
+    project_id: Optional[int] = None,
+    organization_id: Optional[int] = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> "ListResult[UploadBatchRow]":
+    _validate_pagination(page, page_size)
+    base = select(UploadBatch).join(Project, UploadBatch.project_id == Project.id)
+    if project_id is not None:
+        base = base.where(UploadBatch.project_id == project_id)
+    if organization_id is not None:
+        base = base.where(Project.organization_id == organization_id)
+    total = session.scalar(select(func.count()).select_from(base.subquery())) or 0
+    rows = session.scalars(
+        _paginate(
+            base.order_by(UploadBatch.created_at.desc(), UploadBatch.id.desc()),
+            page=page,
+            page_size=page_size,
+        )
+    ).all()
+    return _build_list_result(
+        items=[_upload_batch_to_row(row) for row in rows],
+        total=int(total),
+        page=page,
+        page_size=page_size,
+    )
+
+
+def _processing_job_to_row(job: ProcessingJob) -> ProcessingJobRow:
+    return ProcessingJobRow(
+        id=job.id,
+        batch_id=job.batch_id,
+        project_id=job.project_id,
+        upload_batch_id=job.upload_batch_id,
+        archive_id=job.archive_id,
+        document_key=job.document_key,
+        status=job.status,
+        progress=job.progress,
+        current_stage=job.current_stage,
+        page_count=job.page_count,
+        error_code=job.error_code,
+        error_message=job.error_message,
+        attempt_count=job.attempt_count,
+        started_at=job.started_at,
+        finished_at=job.finished_at,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+    )
+
+
+def list_processing_jobs(
+    session: Session,
+    *,
+    batch_id: int,
+    page: int = 1,
+    page_size: int = 100,
+) -> "ListResult[ProcessingJobRow]":
+    _validate_pagination(page, page_size)
+    base = select(ProcessingJob).where(ProcessingJob.batch_id == batch_id)
+    total = session.scalar(select(func.count()).select_from(base.subquery())) or 0
+    rows = session.scalars(
+        _paginate(
+            base.order_by(ProcessingJob.id.asc()),
+            page=page,
+            page_size=page_size,
+        )
+    ).all()
+    return _build_list_result(
+        items=[_processing_job_to_row(job) for job in rows],
+        total=int(total),
+        page=page,
+        page_size=page_size,
+    )
+
+
+def _processing_event_to_row(event: ProcessingEvent) -> ProcessingEventRow:
+    return ProcessingEventRow(
+        id=event.id,
+        job_id=event.job_id,
+        batch_id=event.batch_id,
+        event_type=event.event_type,
+        stage=event.stage,
+        message=event.message,
+        payload=dict(event.payload or {}),
+        created_at=event.created_at,
+    )
+
+
+def list_processing_events(
+    session: Session,
+    *,
+    batch_id: int,
+    limit: int = 100,
+) -> list[ProcessingEventRow]:
+    if limit < 1 or limit > 500:
+        raise ValueError("limit must be in [1, 500]")
+    rows = session.scalars(
+        select(ProcessingEvent)
+        .where(ProcessingEvent.batch_id == batch_id)
+        .order_by(ProcessingEvent.created_at.desc(), ProcessingEvent.id.desc())
+        .limit(limit)
+    ).all()
+    return [_processing_event_to_row(event) for event in rows]
+
+
 __all__ = [
     "ListResult",
     "ArchiveFilter",
@@ -644,10 +826,16 @@ __all__ = [
     "ArchiveDetail",
     "RevisionRow",
     "AuditLogRow",
+    "UploadBatchRow",
+    "ProcessingJobRow",
+    "ProcessingEventRow",
     "list_batches",
     "get_batch_detail",
     "list_archives",
     "get_archive_detail",
     "list_revisions",
     "list_audit_logs",
+    "list_upload_batches",
+    "list_processing_jobs",
+    "list_processing_events",
 ]

@@ -63,6 +63,11 @@ class BatchRecorder:
         summary_changelog_ref: Optional[str] = None,
         input_dir: Optional[str] = None,
         output_dir: Optional[str] = None,
+        upload_batch_id: Optional[int] = None,
+        trigger_type: str = "manual_cli",
+        batch_name: Optional[str] = None,
+        organization_id: Optional[int] = None,
+        created_by: Optional[int] = None,
     ) -> None:
         if rerun_policy not in VALID_RERUN_POLICIES:
             raise ValueError(
@@ -79,6 +84,11 @@ class BatchRecorder:
         self._summary_changelog_ref = summary_changelog_ref
         self._input_dir = input_dir
         self._output_dir = output_dir
+        self._upload_batch_id = upload_batch_id
+        self._trigger_type = trigger_type
+        self._batch_name = batch_name
+        self._organization_id = organization_id
+        self._created_by = created_by
 
         check_connectivity(engine)
         self._state = self._bootstrap()
@@ -172,10 +182,21 @@ class BatchRecorder:
     ) -> Optional[_ArchiveContext]:
         try:
             with self._session_factory() as session:
+                job = repositories.record_job_start(
+                    session,
+                    batch_id=self._state.batch_id,
+                    project_id=self._state.project_id,
+                    upload_batch_id=self._upload_batch_id,
+                    document_key=archive_key,
+                    page_count=len(image_paths),
+                )
                 archive = repositories.upsert_archive(
                     session,
                     project_id=self._state.project_id,
                     batch_id=self._state.batch_id,
+                    upload_batch_id=self._upload_batch_id,
+                    job_id=job.id,
+                    organization_id=self._organization_id,
                     archive_key=archive_key,
                     archive_name=archive_name,
                     source_folder=source_folder,
@@ -189,10 +210,9 @@ class BatchRecorder:
                     archive_id=archive.id,
                     image_paths=image_paths,
                     input_dir=self._input_dir,
+                    upload_batch_id=self._upload_batch_id,
                 )
-                job = repositories.record_job_start(
-                    session, batch_id=self._state.batch_id, archive_id=archive.id
-                )
+                job.archive_id = archive.id
                 session.commit()
                 return _ArchiveContext(
                     archive_id=archive.id,
@@ -232,11 +252,13 @@ class BatchRecorder:
                         rules_metadata=metadata,
                     )
                 if llm_trace is not None:
-                    archive.llm_raw_response = getattr(llm_trace, "raw_response", None)
-                    archive.llm_cleaned_response = getattr(llm_trace, "cleaned_response", None)
-                    strategy = getattr(llm_trace, "parse_strategy", None)
-                    if strategy:
-                        archive.llm_parse_strategy = strategy
+                    repositories.record_llm_trace(
+                        session,
+                        archive=archive,
+                        job_id=ctx.job_id,
+                        call_type="metadata_extract",
+                        trace=llm_trace,
+                    )
                 repositories.mark_archive_status(
                     session,
                     archive=archive,
@@ -249,7 +271,7 @@ class BatchRecorder:
                 )
                 job = session.get(ProcessingJob, ctx.job_id)
                 if job is not None:
-                    repositories.record_job_attempt(
+                    repositories.mark_job_complete(
                         session,
                         job=job,
                         status=status,
@@ -387,6 +409,8 @@ class BatchRecorder:
                     session,
                     project_key=self._project_key,
                     project_name=self._project_name,
+                    organization_id=self._organization_id,
+                    created_by=self._created_by,
                 )
                 batch = repositories.get_or_create_batch(
                     session,
@@ -394,6 +418,11 @@ class BatchRecorder:
                     batch_key=self._batch_key,
                     input_dir=self._input_dir,
                     output_dir=self._output_dir,
+                    upload_batch_id=self._upload_batch_id,
+                    trigger_type=self._trigger_type,
+                    batch_name=self._batch_name,
+                    organization_id=self._organization_id,
+                    created_by=self._created_by,
                     summary_schema_version=self._summary_schema_version,
                     summary_schema_ref=self._summary_schema_ref,
                     summary_changelog_ref=self._summary_changelog_ref,
