@@ -26,12 +26,12 @@
   <dt>开放状态</dt>
   <dd>{{ archive.openness_status or "" }}</dd>
   <dt>处理状态</dt>
-  <dd>{{ archive.processing_status }}</dd>
+  <dd><span class="status-badge status-{{ archive.processing_status }}">{{ archive.processing_status }}</span></dd>
   <dt>审核状态</dt>
-  <dd>{{ archive.review_status }}</dd>
+  <dd><span class="status-badge status-{{ archive.review_status }}">{{ archive.review_status }}</span></dd>
   <dt>修正状态</dt>
-  <dd>{{ archive.correction_status }}</dd>
-  <dt>LLM 解析策略</dt>
+  <dd><span class="status-badge status-{{ archive.correction_status }}">{{ archive.correction_status }}</span></dd>
+  <dt>解析策略</dt>
   <dd>{{ archive.llm_parse_strategy or "" }}</dd>
   <dt>错误</dt>
   <dd>{{ archive.error_code or "" }} {{ archive.error_message or "" }}</dd>

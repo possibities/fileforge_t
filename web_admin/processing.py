@@ -10,7 +10,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from config.config import Config
-from core.classifier import ArchiveClassifier
 from infrastructure.db import repositories
 from infrastructure.db.engine import dispose_engine, make_engine, make_session_factory
 from infrastructure.db.models import ProcessingBatch, ProcessingJob, UploadedFile, UploadBatch
@@ -59,6 +58,9 @@ def run_upload_processing_batch(
 
         Path(context.output_dir).mkdir(parents=True, exist_ok=True)
         Exporter.initialize(Config.EXPORTER_CONFIG_PATH)
+
+        from core.classifier import ArchiveClassifier
+
         classifier = ArchiveClassifier(
             ocr_lang=Config.OCR_LANG,
             model_name=Config.LLM_MODEL_NAME,

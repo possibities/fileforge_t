@@ -64,7 +64,7 @@
       <td>{{ archive.retention_period or "" }}</td>
       <td>{{ archive.responsible_party or "" }}</td>
       <td>{{ archive.openness_status or "" }}</td>
-      <td>{{ archive.processing_status }}</td>
+      <td><span class="status-badge status-{{ archive.processing_status }}">{{ archive.processing_status }}</span></td>
       <td>{{ archive.page_count }}</td>
       <td><a href="/archives/{{ archive.id }}">详情</a></td>
     </tr>

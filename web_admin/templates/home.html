@@ -1,31 +1,55 @@
 {% extends "base.html" %}
 {% block title %}FileForge 管理后台{% endblock %}
 {% block content %}
-<h1>FileForge 管理后台</h1>
-<dl class="summary-list">
-  <dt>当前用户</dt>
-  <dd>{{ user.username }}{% if user.display_name %}（{{ user.display_name }}）{% endif %}</dd>
-  <dt>角色</dt>
-  <dd>{{ user.roles | join(", ") }}</dd>
-</dl>
+<section class="workbench-header">
+  <div>
+    <p class="eyebrow">FileForge Admin</p>
+    <h1>档案分类管理工作台</h1>
+  </div>
+  <dl class="user-summary">
+    <div>
+      <dt>当前用户</dt>
+      <dd>{{ user.username }}{% if user.display_name %} / {{ user.display_name }}{% endif %}</dd>
+    </div>
+    <div>
+      <dt>角色</dt>
+      <dd>{{ user.roles | join(", ") }}</dd>
+    </div>
+  </dl>
+</section>
 
 <nav class="action-grid" aria-label="后台入口">
   {% if "batch:manage" in user.permissions %}
-  <a class="action-link primary" href="/uploads">上传跑批</a>
+  <a class="action-link primary" href="/uploads">
+    <strong>上传跑批</strong>
+    <span>创建上传批次</span>
+  </a>
   {% endif %}
-  <a class="action-link" href="/batches">批次查询</a>
+  <a class="action-link" href="/batches">
+    <strong>批次查询</strong>
+    <span>查看处理记录</span>
+  </a>
   {% if "project:manage" in user.permissions %}
-  <a class="action-link" href="/admin/projects">项目管理</a>
+  <a class="action-link" href="/admin/projects">
+    <strong>项目管理</strong>
+    <span>维护项目范围</span>
+  </a>
   {% endif %}
   {% if "user:manage" in user.permissions %}
-  <a class="action-link" href="/admin/users">用户管理</a>
+  <a class="action-link" href="/admin/users">
+    <strong>用户管理</strong>
+    <span>维护账号权限</span>
+  </a>
   {% endif %}
   {% if "organization:manage" in user.permissions %}
-  <a class="action-link" href="/admin/organizations">单位管理</a>
+  <a class="action-link" href="/admin/organizations">
+    <strong>单位管理</strong>
+    <span>维护组织范围</span>
+  </a>
   {% endif %}
 </nav>
 
-<form method="post" action="/logout">
+<form class="inline-form" method="post" action="/logout">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <button class="secondary" type="submit">退出登录</button>
 </form>

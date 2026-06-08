@@ -1,7 +1,12 @@
 {% extends "base.html" %}
 {% block title %}上传与在线跑批 - FileForge 管理后台{% endblock %}
 {% block content %}
-<h1>上传与在线跑批</h1>
+<div class="page-header">
+  <div>
+    <p class="eyebrow">Online Batch</p>
+    <h1>上传与在线跑批</h1>
+  </div>
+</div>
 
 {% if error %}
 <p class="error">{{ error }}</p>
@@ -10,18 +15,24 @@
 <section class="panel">
   <h2>新建上传</h2>
   {% if projects %}
-  <form method="post" action="/uploads" enctype="multipart/form-data">
+  <form class="upload-form" method="post" action="/uploads" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label for="project_id">项目</label>
-    <select id="project_id" name="project_id" required>
-      {% for project in projects %}
-      <option value="{{ project.id }}">{{ project.project_key }}{% if project.project_name %} - {{ project.project_name }}{% endif %}</option>
-      {% endfor %}
-    </select>
-    <label for="upload_name">上传名称</label>
-    <input id="upload_name" name="upload_name" type="text" maxlength="255">
-    <label for="files">文件</label>
-    <input id="files" name="files" type="file" accept=".jpg,.jpeg,.png,.bmp,.tiff,.tif,.zip" multiple required>
+    <label for="project_id">
+      项目
+      <select id="project_id" name="project_id" required>
+        {% for project in projects %}
+        <option value="{{ project.id }}">{{ project.project_key }}{% if project.project_name %} - {{ project.project_name }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label for="upload_name">
+      上传名称
+      <input id="upload_name" name="upload_name" type="text" maxlength="255">
+    </label>
+    <label class="file-field" for="files">
+      文件
+      <input id="files" name="files" type="file" accept=".jpg,.jpeg,.png,.bmp,.tiff,.tif,.zip" multiple required>
+    </label>
     <button type="submit">上传</button>
   </form>
   {% else %}
@@ -29,7 +40,10 @@
   {% endif %}
 </section>
 
-<h2>上传记录</h2>
+<div class="section-heading">
+  <h2>上传记录</h2>
+  <span class="muted">共 {{ result.total }} 条</span>
+</div>
 <table>
   <thead>
     <tr>

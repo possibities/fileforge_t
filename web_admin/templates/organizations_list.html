@@ -3,7 +3,7 @@
 {% block content %}
 <h1>单位管理</h1>
 
-<p><a href="/admin/organizations/new">新建单位</a></p>
+<p><a class="button-link" href="/admin/organizations/new">新建单位</a></p>
 
 <table>
   <thead>
@@ -20,7 +20,7 @@
     <tr>
       <td>{{ org.id }}</td>
       <td>{{ org.name }}</td>
-      <td>{{ org.status }}</td>
+      <td><span class="status-badge status-{{ org.status }}">{{ org.status }}</span></td>
       <td>{{ org.created_at }}</td>
       <td>
         {% if org.status == "active" %}

@@ -7,9 +7,12 @@
   <link rel="stylesheet" href="/static/admin.css">
   {% block head_extra %}{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   <header class="topbar">
-    <a class="brand" href="/">FileForge</a>
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true">F</span>
+      <span>FileForge</span>
+    </a>
     {% if user is defined and user %}
     <nav class="nav">
       <a href="/batches">批次</a>
@@ -26,7 +29,10 @@
       <a href="/admin/projects">项目</a>
       {% endif %}
     </nav>
-    <div class="identity">{{ user.display_name or user.username }}</div>
+    <div class="identity">
+      <span class="identity-name">{{ user.display_name or user.username }}</span>
+      <span class="identity-role">{{ user.roles | join(", ") }}</span>
+    </div>
     {% endif %}
   </header>
   <main class="page">

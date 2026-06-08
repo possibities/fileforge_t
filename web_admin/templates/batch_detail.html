@@ -8,7 +8,7 @@
   <dt>名称</dt>
   <dd>{{ batch.batch_name or "" }}</dd>
   <dt>状态</dt>
-  <dd>{{ batch.batch_status }}</dd>
+  <dd><span class="status-badge status-{{ batch.batch_status }}">{{ batch.batch_status }}</span></dd>
   <dt>输入目录</dt>
   <dd>{{ batch.input_dir or "" }}</dd>
   <dt>输出目录</dt>

@@ -45,7 +45,7 @@
     <tr>
       <td>{{ batch.batch_key }}</td>
       <td>{{ batch.batch_name or "" }}</td>
-      <td>{{ batch.batch_status }}</td>
+      <td><span class="status-badge status-{{ batch.batch_status }}">{{ batch.batch_status }}</span></td>
       <td>{{ batch.total_archives }}</td>
       <td>{{ batch.total_pages }}</td>
       <td>{{ batch.success_count }}</td>

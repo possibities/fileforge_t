@@ -3,7 +3,7 @@
 {% block content %}
 <h1>项目管理</h1>
 
-<p><a href="/admin/projects/new">新建项目</a></p>
+<p><a class="button-link" href="/admin/projects/new">新建项目</a></p>
 
 {% if show_org_filter %}
 <form method="get" action="/admin/projects">
@@ -36,7 +36,7 @@
       <td>{{ project.project_key }}</td>
       <td>{{ project.project_name or "" }}</td>
       <td>{{ project.organization_name or "" }}</td>
-      <td>{{ project.status }}</td>
+      <td><span class="status-badge status-{{ project.status }}">{{ project.status }}</span></td>
       <td>{{ project.created_at }}</td>
       <td>
         {% if project.status == "active" %}
