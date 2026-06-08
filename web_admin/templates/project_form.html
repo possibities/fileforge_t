@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}新建项目 - FileForge 管理后台{% endblock %}
+{% block title %}新建整理项目 - FileForge 管理后台{% endblock %}
 {% block content %}
-<h1>新建项目</h1>
+<h1>新建整理项目</h1>
 
 {% if error %}
 <p class="error">{{ error }}</p>
@@ -10,11 +10,11 @@
 <form method="post" action="/admin/projects/new">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <p>
-    <label for="project_key">project_key(必填,1–128 字符,字母数字/-/_,唯一)</label><br>
+    <label for="project_key">项目标识(必填,1–128 字符,字母数字/-/_,唯一)</label><br>
     <input type="text" id="project_key" name="project_key" value="{{ values.project_key or '' }}" maxlength="128" pattern="[A-Za-z0-9_\-]+" required>
   </p>
   <p>
-    <label for="project_name">项目名称(可空,≤255 字符)</label><br>
+    <label for="project_name">整理项目名称(可空,≤255 字符)</label><br>
     <input type="text" id="project_name" name="project_name" value="{{ values.project_name or '' }}" maxlength="255">
   </p>
   <p>

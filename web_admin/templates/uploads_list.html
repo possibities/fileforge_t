@@ -18,7 +18,7 @@
   <form class="upload-form" method="post" action="/uploads" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label for="project_id">
-      项目
+      选择整理项目
       <select id="project_id" name="project_id" required>
         {% for project in projects %}
         <option value="{{ project.id }}">{{ project.project_key }}{% if project.project_name %} - {{ project.project_name }}{% endif %}</option>
@@ -36,7 +36,7 @@
     <button type="submit">上传</button>
   </form>
   {% else %}
-  <p class="empty-state">暂无可用项目</p>
+  <p class="empty-state">暂无可用整理项目</p>
   {% endif %}
 </section>
 

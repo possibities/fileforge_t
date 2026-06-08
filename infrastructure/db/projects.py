@@ -51,18 +51,18 @@ def create_project(
     """
     key = (project_key or "").strip()
     if not key:
-        raise ValueError("project_key 不能为空")
+        raise ValueError("项目标识不能为空")
 
     existing = session.scalar(select(Project).where(Project.project_key == key))
     if existing is not None:
-        raise ValueError(f"project_key 已存在: {key}")
+        raise ValueError(f"项目标识已存在: {key}")
 
     org = session.get(Organization, organization_id)
     if org is None:
         raise ValueError(f"organization 不存在: {organization_id}")
     if org.status != "active":
         raise ValueError(
-            f"organization 状态为 {org.status} (非 active),不能新建项目"
+            f"单位状态为 {org.status} (非 active),不能新建整理项目"
         )
 
     project = Project(
@@ -126,7 +126,7 @@ def set_project_status(
         raise ValueError(f"status 必须为 {PROJECT_STATUS} 之一,实际为 {status}")
     project = session.get(Project, project_id)
     if project is None:
-        raise ValueError(f"project 不存在: {project_id}")
+        raise ValueError(f"整理项目不存在: {project_id}")
     project.status = status
 
 

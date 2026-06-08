@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}项目管理 - FileForge 管理后台{% endblock %}
+{% block title %}整理项目 - FileForge 管理后台{% endblock %}
 {% block content %}
-<h1>项目管理</h1>
+<h1>整理项目</h1>
 
-<p><a class="button-link" href="/admin/projects/new">新建项目</a></p>
+<p><a class="button-link" href="/admin/projects/new">新建整理项目</a></p>
 
 {% if show_org_filter %}
 <form method="get" action="/admin/projects">
@@ -21,7 +21,7 @@
   <thead>
     <tr>
       <th>ID</th>
-      <th>project_key</th>
+      <th>项目标识</th>
       <th>名称</th>
       <th>单位</th>
       <th>状态</th>

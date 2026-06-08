@@ -2,7 +2,7 @@
 {% block title %}档案查询 - FileForge 管理后台{% endblock %}
 {% block content %}
 <h1>档案查询</h1>
-<p>项目: {{ project.project_key }}；批次: {{ batch.batch_key }}</p>
+<p>整理项目: {{ project.project_key }}；批次: {{ batch.batch_key }}</p>
 
 <form method="get" action="/batches/{{ batch.id }}/archives">
   <label>
