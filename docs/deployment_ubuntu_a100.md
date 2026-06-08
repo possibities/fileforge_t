@@ -458,4 +458,3 @@ sudo pkill -f "uvicorn web_admin"
 | Web 后台运行细节 | `docs/web_admin.md` |
 | vLLM 服务参数 | `docs/vllm_server.md` |
 | 项目架构 | `docs/postgresql_integration_architecture.md` |
-| 项目设计原则 / 规则引擎 | `CLAUDE.md` |

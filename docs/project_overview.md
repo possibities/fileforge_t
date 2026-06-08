@@ -476,8 +476,6 @@ python -m unittest discover -s tests -p "test_*.py"
 fileforge/
 ├─ main.py                  # 管线入口
 ├─ constants.py             # 全部关键词、码表、正则、阈值
-├─ CLAUDE.md                # 给 AI 协作者的项目说明(同时也是给人的)
-├─ AGENTS.md                # AI 协作约定
 │
 ├─ config/
 │  ├─ config.py             # 环境变量驱动的配置
@@ -688,4 +686,3 @@ uvicorn web_admin.app:create_app --factory --host 0.0.0.0 --port 8080
 | Demo 数据准备 | `docs/demo_data_guide.md` |
 | 项目架构来龙去脉 | `docs/postgresql_integration_architecture.md` |
 | 历次设计决策 / 实施步骤 | `git log` |
-| AI 协作约定 | `CLAUDE.md`、`AGENTS.md` |
