@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request, status
@@ -20,6 +21,8 @@ from web_admin.routes import uploads as uploads_routes
 from web_admin.routes import users as users_routes
 from web_admin.settings import WebAdminSettings
 
+
+logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
@@ -51,6 +54,13 @@ def _render_error(request: Request, status_code: int, message: str | None = None
 
 def create_app(database_url: str | None = None) -> FastAPI:
     settings = WebAdminSettings.from_env(database_url=database_url)
+    if not settings.cookie_secure:
+        # R6：cookie_secure 默认关闭便于本地 HTTP 开发，但生产必须开启，
+        # 否则 session/CSRF cookie 会以明文 HTTP 传输。这里大声告警以免上线时漏配。
+        logger.warning(
+            "[Web] WEB_COOKIE_SECURE 未启用：session/CSRF cookie 将通过明文 HTTP 传输；"
+            "生产部署务必在 TLS 之后设置 WEB_COOKIE_SECURE=true。"
+        )
     app = FastAPI(title="FileForge Admin")
     app.state.settings = settings
     app.state.templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
