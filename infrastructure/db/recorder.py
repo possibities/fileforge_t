@@ -248,6 +248,7 @@ class BatchRecorder:
         traceback_text: Optional[str] = None,
         result_filename: Optional[str] = None,
         llm_trace: Optional[Any] = None,
+        rewrite_trace: Optional[Any] = None,
     ) -> None:
         if ctx is None:
             return
@@ -275,6 +276,16 @@ class BatchRecorder:
                         job_id=ctx.job_id,
                         call_type="metadata_extract",
                         trace=llm_trace,
+                    )
+                if rewrite_trace is not None:
+                    # 二次简报重写：独立 LlmTrace 行；不覆盖 archive 主抽取的缓存 llm_* 列 [R2]
+                    repositories.record_llm_trace(
+                        session,
+                        archive=archive,
+                        job_id=ctx.job_id,
+                        call_type="briefing_rewrite",
+                        trace=rewrite_trace,
+                        update_cached_columns=False,
                     )
                 repositories.mark_archive_status(
                     session,

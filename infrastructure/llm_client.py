@@ -88,6 +88,9 @@ class LlmClient:
         # 最近一次 extract_metadata 调用的可审计快照；
         # 调用方(classifier→batch_processor→recorder)可读后落库。
         self.last_trace: Optional[ExtractionTrace] = None
+        # 最近一次 rewrite_briefing_title(二次简报重写)调用的可审计快照；
+        # 与 last_trace 分开，便于以独立 call_type 入库审计 [R2]。
+        self.last_rewrite_trace: Optional[ExtractionTrace] = None
 
     # ── 公开接口 ──────────────────────────────────────────────────────────────
 
@@ -148,6 +151,7 @@ class LlmClient:
           - 重写成功 → 新题名字符串（调用方仍需校验是否以"简报"结尾）
           - LLM 认为信息不足（返回与原题名相同）/ 解析失败 / 异常 → 空字符串
         """
+        self.last_rewrite_trace = None
         if not current_title:
             return ""
 
@@ -161,11 +165,22 @@ class LlmClient:
 
         logger.info("[LLM] 二次调用：重写文学性简报题名...")
         try:
-            response = self._generate(formatted)
-            response = self._clean_response(response)
-            parsed, _ = self._parse_json(response)
+            raw = self._generate(formatted)
+            cleaned = self._clean_response(raw)
+            parsed, strategy = self._parse_json(cleaned)
+            self.last_rewrite_trace = ExtractionTrace(
+                raw_response=raw,
+                cleaned_response=cleaned,
+                parse_strategy=strategy,
+                parsed_metadata=dict(parsed) if parsed else None,
+            )
         except Exception as e:
             logger.exception(f"[LLM重写异常] {e}")
+            self.last_rewrite_trace = ExtractionTrace(
+                raw_response="",
+                cleaned_response="",
+                parse_strategy=PARSE_STRATEGY_FAILED,
+            )
             return ""
 
         new_title = str(parsed.get("题名") or "").strip() if parsed else ""

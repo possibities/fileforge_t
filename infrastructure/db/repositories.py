@@ -960,7 +960,13 @@ def record_llm_trace(
     job_id: Optional[int],
     call_type: str,
     trace: Any,
+    update_cached_columns: bool = True,
 ) -> Optional[LlmTrace]:
+    """写一条 LlmTrace 历史行。
+
+    update_cached_columns=True 时同步刷新 archive 上的缓存列(llm_raw_response 等)。
+    二次简报重写(call_type=briefing_rewrite)应传 False，避免覆盖主抽取的缓存快照 [R2]。
+    """
     raw = getattr(trace, "raw_response", None)
     cleaned = getattr(trace, "cleaned_response", None)
     strategy = getattr(trace, "parse_strategy", None)
@@ -979,9 +985,10 @@ def record_llm_trace(
         error_message=getattr(trace, "error_message", None),
     )
     session.add(row)
-    archive.llm_raw_response = raw
-    archive.llm_cleaned_response = cleaned
-    if strategy:
-        archive.llm_parse_strategy = strategy
+    if update_cached_columns:
+        archive.llm_raw_response = raw
+        archive.llm_cleaned_response = cleaned
+        if strategy:
+            archive.llm_parse_strategy = strategy
     session.flush()
     return row

@@ -231,6 +231,7 @@ class BatchProcessor:
                         traceback_text=result.get("traceback"),
                         result_filename=result_filename,
                         llm_trace=getattr(self.classifier, "last_extraction_trace", None),
+                        rewrite_trace=getattr(self.classifier, "last_rewrite_trace", None),
                     )
                 except Exception as exc:  # pragma: no cover - defensive
                     logger.exception("[Recorder] on_archive_complete 异常: %s", exc)

@@ -38,8 +38,14 @@ class ArchiveClassifier:
         self.metadata_schema = METADATA_SCHEMA
         self.extraction_prompt = self._build_extraction_prompt()
         self.briefing_rewrite_prompt = self._load_prompt_file("briefing_rewrite.txt")
-        # 暴露最近一次抽取的 LLM trace 给 BatchProcessor → BatchRecorder 落库
+        # 暴露最近一次抽取的 LLM trace 给 BatchProcessor → BatchRecorder 落库。
+        # 语义契约 [R4]：None 唯一表示"本次未发起抽取调用"(OCR 为空时短路返回);
+        # 凡真正调用过 LLM 的路径(成功/解析失败/异常)都会写入非 None 的 trace
+        # (失败为 parse_strategy=failed,而非 None)。故下游可凭 None 判定"未调用"。
         self.last_extraction_trace = None
+        # 暴露最近一次"简报题名二次重写"的 LLM trace,同样落库审计 [R2]。
+        # 同上契约：未触发重写(无 _需重构简报题名 标志)时保持 None。
+        self.last_rewrite_trace = None
 
     # ── 公开接口 ───────────────────────────────────────────────────────────────
 
@@ -53,6 +59,7 @@ class ArchiveClassifier:
         logger.info(f"{'='*70}\n")
 
         self.last_extraction_trace = None
+        self.last_rewrite_trace = None
         ocr_text = self.ocr_client.extract_text_from_images(image_paths)
 
         if not ocr_text:
@@ -123,6 +130,8 @@ class ArchiveClassifier:
             )
         except Exception as exc:
             logger.exception(f"[题名重写] 二次调用抛异常: {exc}")
+        # 透传二次重写的 trace 给 BatchProcessor → BatchRecorder 落库审计 [R2]
+        self.last_rewrite_trace = getattr(self.llm_client, "last_rewrite_trace", None)
 
         if new_title and "简报" in new_title and new_title != current_title:
             logger.info(f"[题名重写] {current_title!r} → {new_title!r}")

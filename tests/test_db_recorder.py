@@ -49,10 +49,11 @@ def _make_engine():
 
 
 class _StubClassifier:
-    def __init__(self, payload, trace=None):
+    def __init__(self, payload, trace=None, rewrite_trace=None):
         self._payload = payload
         self.calls = 0
         self.last_extraction_trace = trace
+        self.last_rewrite_trace = rewrite_trace
 
     def process_multi_page_document(self, archive_name, image_paths):
         self.calls += 1
@@ -304,6 +305,41 @@ class TestBatchRecorder(unittest.TestCase):
             trace_row = session.scalar(select(LlmTrace))
             self.assertIsNotNone(trace_row)
             self.assertEqual(trace_row.parse_strategy, "repaired")
+
+    def test_briefing_rewrite_trace_persisted_as_second_row(self):
+        # [R2] 二次简报重写调用必须作为独立 LlmTrace(call_type=briefing_rewrite)入库，
+        # 且不得覆盖 archive 上主抽取的缓存 llm_* 列。
+        from infrastructure.llm_client import ExtractionTrace, PARSE_STRATEGY_JSON
+
+        extract_trace = ExtractionTrace(
+            raw_response='{"extract": 1}',
+            cleaned_response='{"extract": 1}',
+            parse_strategy=PARSE_STRATEGY_JSON,
+            parsed_metadata=dict(self.payload),
+        )
+        rewrite_trace = ExtractionTrace(
+            raw_response='{"题名": "关于开展X活动的简报"}',
+            cleaned_response='{"题名": "关于开展X活动的简报"}',
+            parse_strategy=PARSE_STRATEGY_JSON,
+            parsed_metadata={"题名": "关于开展X活动的简报"},
+        )
+        classifier = _StubClassifier(
+            self.payload, trace=extract_trace, rewrite_trace=rewrite_trace
+        )
+        recorder = self._make_recorder()
+        BatchProcessor(classifier, recorder=recorder).batch_process_archives(
+            self.archive_dict, output_dir=str(self.tmp_root / "out")
+        )
+
+        with self.Session() as session:
+            traces = session.scalars(select(LlmTrace)).all()
+            call_types = {t.call_type for t in traces}
+            self.assertEqual(len(traces), 2)
+            self.assertIn("metadata_extract", call_types)
+            self.assertIn("briefing_rewrite", call_types)
+            # 缓存列反映主抽取，不被重写覆盖
+            archive = session.scalar(select(ArchiveRecord))
+            self.assertEqual(archive.llm_raw_response, '{"extract": 1}')
 
     def test_llm_trace_absent_leaves_columns_null(self):
         recorder = self._make_recorder()
