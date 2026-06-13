@@ -166,6 +166,80 @@ class TestBatchRecorder(unittest.TestCase):
         # 件号必须不变
         self.assertEqual(results[0]["metadata"]["档号"], "2026-DQL-D30-0001")
 
+    def test_rerun_failed_only_skips_prior_success(self):
+        """rerun-failed-only：上次成功的档案应被复用、不再重跑(等同 skip-success 的跳过判定)。"""
+        recorder = self._make_recorder()
+        classifier = _StubClassifier(self.payload)
+        BatchProcessor(classifier, recorder=recorder).batch_process_archives(
+            self.archive_dict, output_dir=str(self.tmp_root / "out")
+        )
+        self.assertEqual(classifier.calls, 1)
+
+        recorder2 = self._make_recorder(batch_key="b1", policy="rerun-failed-only")
+        classifier2 = _StubClassifier(self.payload)
+        results = BatchProcessor(classifier2, recorder=recorder2).batch_process_archives(
+            self.archive_dict, output_dir=str(self.tmp_root / "out")
+        )
+        self.assertEqual(classifier2.calls, 0)
+        self.assertEqual(results[0]["status"], "success")
+        self.assertEqual(results[0]["metadata"]["档号"], "2026-DQL-D30-0001")
+
+    def test_rerun_all_reprocesses_prior_success(self):
+        """rerun-all：即使上次成功也要重新处理(从不跳过)。"""
+        recorder = self._make_recorder()
+        classifier = _StubClassifier(self.payload)
+        BatchProcessor(classifier, recorder=recorder).batch_process_archives(
+            self.archive_dict, output_dir=str(self.tmp_root / "out")
+        )
+        self.assertEqual(classifier.calls, 1)
+
+        recorder2 = self._make_recorder(batch_key="b1", policy="rerun-all")
+        classifier2 = _StubClassifier(self.payload)
+        results = BatchProcessor(classifier2, recorder=recorder2).batch_process_archives(
+            self.archive_dict, output_dir=str(self.tmp_root / "out")
+        )
+        self.assertEqual(classifier2.calls, 1)
+        self.assertEqual(results[0]["status"], "success")
+
+    def test_llm_metadata_snapshot_persisted_from_trace(self):
+        """llm_metadata 落库 = 规则前的 LLM 原始输出(ExtractionTrace.parsed_metadata)，
+        与 final_metadata(规则后+发号)区分。"""
+        from infrastructure.llm_client import ExtractionTrace, PARSE_STRATEGY_JSON
+
+        llm_raw = dict(self.payload)
+        llm_raw["保管期限"] = "永久"  # 规则前的原始值，最终 payload 是 30年
+        trace = ExtractionTrace(
+            raw_response="{}",
+            cleaned_response="{}",
+            parse_strategy=PARSE_STRATEGY_JSON,
+            parsed_metadata=llm_raw,
+        )
+        recorder = self._make_recorder()
+        classifier = _StubClassifier(self.payload, trace=trace)
+        BatchProcessor(classifier, recorder=recorder).batch_process_archives(
+            self.archive_dict, output_dir=str(self.tmp_root / "out")
+        )
+
+        with self.Session() as session:
+            archive = session.scalar(select(ArchiveRecord))
+            self.assertIsNotNone(archive.llm_metadata)
+            self.assertEqual(archive.llm_metadata["保管期限"], "永久")
+            self.assertEqual(archive.final_metadata["保管期限"], "30年")
+            # llm_metadata 是规则前快照，不含发号字段
+            self.assertNotIn("档号", archive.llm_metadata)
+            self.assertEqual(archive.final_metadata["档号"], "2026-DQL-D30-0001")
+
+    def test_llm_metadata_null_when_trace_absent(self):
+        """无 trace(或 trace 无 parsed_metadata)时 llm_metadata 应保持 NULL。"""
+        recorder = self._make_recorder()
+        classifier = _StubClassifier(self.payload, trace=None)
+        BatchProcessor(classifier, recorder=recorder).batch_process_archives(
+            self.archive_dict, output_dir=str(self.tmp_root / "out")
+        )
+        with self.Session() as session:
+            archive = session.scalar(select(ArchiveRecord))
+            self.assertIsNone(archive.llm_metadata)
+
     def test_db_failure_does_not_break_pipeline(self):
         recorder = self._make_recorder()
 

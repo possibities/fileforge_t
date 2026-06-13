@@ -38,11 +38,16 @@ class ExtractionTrace:
     raw_response       — vLLM 返回的原始 message.content
     cleaned_response   — 去掉 ``` 包裹和 {...} 截取后的字符串
     parse_strategy     — json/repaired/regex/failed,与数据契约 §4.4 对齐
+    parsed_metadata    — 解析+字段白名单过滤后的 LLM 原始结构化输出快照,
+                         规则引擎修正之前。供 BatchRecorder 落库到
+                         archive_records.llm_metadata(规则前的"LLM 原样"快照),
+                         与 rules_metadata/final_metadata 区分。失败/空时为 None。
     """
 
     raw_response: str
     cleaned_response: str
     parse_strategy: str
+    parsed_metadata: Optional[dict] = None
 
 
 class LlmClient:
@@ -113,6 +118,9 @@ class LlmClient:
                 raw_response=response,
                 cleaned_response=cleaned,
                 parse_strategy=strategy,
+                # 规则引擎会就地修改返回的 metadata,这里存一份浅拷贝快照;
+                # 字段值均为标量(str/None),浅拷贝即可隔离后续改写。
+                parsed_metadata=dict(metadata) if metadata else None,
             )
             return metadata
 

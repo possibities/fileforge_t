@@ -5,7 +5,11 @@
     不能让批次崩溃或丢 JSON/CSV 输出（数据契约 §6.3）。
   - 单档案一个事务（archive + pages + job + attempt + final_metadata + 状态）。
   - allocator 走自己的短事务，与档案大事务解耦。
-  - 件号策略：skip-success 默认 + 尾部新发号；force-renumber/rerun-all 留接口暂未实现。
+  - rerun_policy 三档(VALID_RERUN_POLICIES)：
+      · skip-success(默认) / rerun-failed-only —— 复用上次已成功档案的结果，
+        只(重)处理失败与新增档案；件号在既有计数器尾部续号。
+      · rerun-all —— 全部重新处理(不复用)，件号同样尾部续号(不重排，
+        即不做 force-renumber)。
 """
 
 from __future__ import annotations
@@ -127,7 +131,14 @@ class BatchRecorder:
             )
 
     def should_skip(self, archive_key: str) -> bool:
-        if self._rerun_policy != "skip-success":
+        # rerun-all：从不跳过，全部档案重新处理。
+        # skip-success / rerun-failed-only：复用上次已成功档案的结果，不再重复处理；
+        #   上次失败的与新增的档案仍会(重新)处理。
+        #   注意：当前架构下"跳过"等价于"复用既有成功结果"(见 BatchProcessor:
+        #   should_skip 命中后只有能 load_previous_success 才会真正跳过)，因此
+        #   skip-success 与 rerun-failed-only 的跳过判定一致——前者强调"保留成功"，
+        #   后者强调"只重跑非成功"，二者描述同一操作。
+        if self._rerun_policy == "rerun-all":
             return False
         try:
             with self._session_factory() as session:
@@ -137,7 +148,9 @@ class BatchRecorder:
             if hit is not None:
                 self._state.skipped_archive_keys.append(archive_key)
                 logger.info(
-                    "[DB] skip-success: archive_key=%s 上次成功，跳过本次处理", archive_key
+                    "[DB] %s: archive_key=%s 上次成功，跳过本次处理",
+                    self._rerun_policy,
+                    archive_key,
                 )
                 return True
         except Exception as exc:
@@ -245,11 +258,15 @@ class BatchRecorder:
                     raise RuntimeError(f"archive id={ctx.archive_id} 不存在")
                 review = self._derive_review_status(metadata) if status == "success" else None
                 if status == "success" and metadata is not None:
+                    # llm_metadata = 规则引擎修正前的 LLM 原始结构化输出,
+                    # 由 ExtractionTrace.parsed_metadata 透传而来(trace 可能为 None)。
+                    llm_metadata = getattr(llm_trace, "parsed_metadata", None)
                     repositories.apply_classification_result(
                         session,
                         archive=archive,
                         final_metadata=metadata,
                         rules_metadata=metadata,
+                        llm_metadata=llm_metadata,
                     )
                 if llm_trace is not None:
                     repositories.record_llm_trace(
