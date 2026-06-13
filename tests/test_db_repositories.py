@@ -180,6 +180,30 @@ class TestApplyClassificationResult(unittest.TestCase):
             archive = session.get(ArchiveRecord, archive_id)
             self.assertEqual(archive.retention_period_code, "C")
 
+    def test_retention_code_resolves_old_year_new_vocabulary(self):
+        # [R1] 归档年度<2007 但期限为 30年/10年(分类方案口径)时,
+        # retention_period_code 必须映射为 D30/D10,不得回落成 None。
+        archive_id = self._make_archive()
+
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            repositories.apply_classification_result(
+                session,
+                archive=archive,
+                final_metadata={
+                    "归档年度": "2005",
+                    "保管期限": "30年",
+                    "实体分类号": "002",
+                    "实体分类名称": "综合类",
+                    "题名": "旧档案新口径",
+                },
+            )
+            session.commit()
+
+        with self.Session() as session:
+            archive = session.get(ArchiveRecord, archive_id)
+            self.assertEqual(archive.retention_period_code, "D30")
+
 
 @unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
 class TestUpsertArchiveRerun(unittest.TestCase):

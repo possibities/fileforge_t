@@ -125,12 +125,27 @@ class TestAllocatorParity(unittest.TestCase):
         allocator = DatabaseAllocator(
             session_factory=self.Session, project_id=self.project_id
         )
-        # 2006 年（含）以前应使用 Y/C/D 而非 Y/D30/D10
+        # 2006 年（含）以前的旧词 长期/短期 → C/D
         result = allocator.assign({YEAR_KEY: "2005", CLASS_KEY: "002", PERIOD_KEY: "长期"})
         self.assertEqual(result[DOC_ID_KEY], "2005-002-C-0001")
 
         result2 = allocator.assign({YEAR_KEY: "2006", CLASS_KEY: "001", PERIOD_KEY: "短期"})
         self.assertEqual(result2[DOC_ID_KEY], "2006-001-D-0001")
+
+    def test_old_year_accepts_new_period_vocabulary(self):
+        # [R1] 分类方案的期限词只有 永久/30年/10年，规则引擎也只产出这三者。
+        # 归档年度<2007 的档案带 30年/10年 时必须能映射，不得回落成 None。
+        allocator = DatabaseAllocator(
+            session_factory=self.Session, project_id=self.project_id
+        )
+        r30 = allocator.assign({YEAR_KEY: "2005", CLASS_KEY: "002", PERIOD_KEY: "30年"})
+        self.assertEqual(r30[DOC_ID_KEY], "2005-002-D30-0001")
+
+        r10 = allocator.assign({YEAR_KEY: "2006", CLASS_KEY: "001", PERIOD_KEY: "10年"})
+        self.assertEqual(r10[DOC_ID_KEY], "2006-001-D10-0001")
+
+        ry = allocator.assign({YEAR_KEY: "2005", CLASS_KEY: "002", PERIOD_KEY: "永久"})
+        self.assertEqual(ry[DOC_ID_KEY], "2005-002-Y-0001")
 
     def test_unknown_period_returns_none(self):
         allocator = DatabaseAllocator(
