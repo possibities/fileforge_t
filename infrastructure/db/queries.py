@@ -657,7 +657,8 @@ def list_audit_logs(
 ) -> "ListResult[AuditLogRow]":
     """按 (target_type, target_id) 列出审计记录,默认 created_at DESC, id DESC。
 
-    一期白名单 target_type ∈ {"archive"};未知值快速失败,避免 audit 漏检(spec §6/§12.4)。
+    白名单 target_type ∈ {"archive", "batch", "upload"},与 record_audit_log 实际写入的
+    目标类型保持一致;未知值快速失败,避免 audit 漏检(spec §6/§12.4)。
     """
     if target_type not in _AUDIT_TARGET_TYPES_ALLOWED:
         raise ValueError(

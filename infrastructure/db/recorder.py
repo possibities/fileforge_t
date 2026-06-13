@@ -400,7 +400,9 @@ class BatchRecorder:
         success_count: int,
         fail_count: int,
         failure_breakdown: Dict[str, int],
-        batch_status: str = "completed",
+        # 终态默认与 repositories.finalize_batch 保持一致(success);生产路径下
+        # BatchProcessor 总会显式传入 success/failed/partial_failed,此默认仅兜底 [R14]。
+        batch_status: str = "success",
     ) -> None:
         try:
             with self._session_factory() as session:
