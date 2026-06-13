@@ -142,6 +142,17 @@ def verify_password(password: str, stored_hash: str) -> bool:
     return hmac.compare_digest(actual, expected)
 
 
+# 模块加载时即生成一个合法格式的占位哈希，供未知/停用用户的等价 PBKDF2 计算使用。
+# 用于消除登录用户名枚举的计时旁路：无论用户是否存在，authenticate_user 都恰好执行
+# 一次完整 PBKDF2。采用即时(而非惰性)初始化，避免首个未知用户请求的计时偏差与并发竞态；
+# 代价是导入本模块时多付一次性 PBKDF2 开销(可忽略)，即使该进程从不鉴权。
+_DUMMY_PASSWORD_HASH: str = hash_password("x" * MIN_PASSWORD_LENGTH)
+
+
+def _dummy_password_hash() -> str:
+    return _DUMMY_PASSWORD_HASH
+
+
 def ensure_builtin_roles(session: Session) -> None:
     """Compatibility hook for the old CLI.
 
@@ -285,9 +296,15 @@ def authenticate_user(
     password: str,
 ) -> Optional[AppUser]:
     user = _get_user_by_username(session, username)
-    if user is None or user.status != "active":
-        return None
-    if user.organization is not None and user.organization.status != "active":
+    inactive = (
+        user is None
+        or user.status != "active"
+        or (user.organization is not None and user.organization.status != "active")
+    )
+    if inactive:
+        # 对未知/停用用户也执行一次等价 PBKDF2，使各分支耗时一致，
+        # 消除"用户名是否存在"的登录计时旁路（枚举）。
+        verify_password(password, _dummy_password_hash())
         return None
     if not verify_password(password, user.password_hash):
         return None

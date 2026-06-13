@@ -114,6 +114,25 @@ class TestAccountServices(unittest.TestCase):
                 )
             )
 
+    def test_authenticate_unknown_user_still_runs_password_hash(self):
+        # [R9] 未知用户也必须执行一次 verify_password(等价 PBKDF2)，
+        # 否则登录耗时会泄露"用户名是否存在"(枚举旁路)。
+        from unittest import mock
+
+        with self.Session() as session:
+            self.accounts.ensure_builtin_roles(session)
+            session.commit()
+
+        with self.Session() as session:
+            with mock.patch.object(
+                self.accounts, "verify_password", wraps=self.accounts.verify_password
+            ) as spy:
+                result = self.accounts.authenticate_user(
+                    session, username="ghost", password="whatever-strong-pw"
+                )
+            self.assertIsNone(result)
+            self.assertEqual(spy.call_count, 1)
+
     def test_duplicate_username_is_rejected(self):
         with self.Session() as session:
             self.accounts.ensure_builtin_roles(session)

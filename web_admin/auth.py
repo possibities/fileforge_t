@@ -14,7 +14,7 @@ from infrastructure.db.models import (
     WebSession,
 )
 
-from .security import CSRF_TOKEN_BYTES, generate_token, hash_token
+from .security import CSRF_TOKEN_BYTES, generate_token, hash_token, verify_token_hash
 
 
 DEFAULT_SESSION_TTL_SECONDS = 8 * 60 * 60
@@ -154,11 +154,19 @@ def verify_csrf_token(
     *,
     session_token: str,
     csrf_token: str,
+    now: Optional[datetime] = None,
 ) -> bool:
+    now = _as_aware_utc(now or _utcnow())
     web_session = session.scalar(
         select(WebSession).where(WebSession.token_hash == hash_token(session_token))
     )
-    return web_session is not None and web_session.csrf_token_hash == hash_token(csrf_token)
+    # 会话必须存在、未吊销、未过期：陈旧/已登出的会话不应通过 CSRF 校验。
+    if web_session is None or web_session.revoked_at is not None:
+        return False
+    if _as_aware_utc(web_session.expires_at) <= now:
+        return False
+    # 常量时间比较，避免 csrf hash 比较产生计时旁路。
+    return verify_token_hash(csrf_token, web_session.csrf_token_hash)
 
 
 def logout_session(

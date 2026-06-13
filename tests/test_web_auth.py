@@ -162,6 +162,61 @@ class TestWebAuthSessions(unittest.TestCase):
             )
             self.assertIsNone(current)
 
+    def test_verify_csrf_token_accepts_valid_rejects_wrong(self):
+        self._create_user()
+        now = datetime(2026, 5, 12, 9, 0, tzinfo=timezone.utc)
+        with self.Session() as session:
+            tokens = self.auth.login_user(
+                session, username="admin", password="very-strong-password",
+                ttl_seconds=3600, now=now,
+            )
+            session.commit()
+        with self.Session() as session:
+            self.assertTrue(self.auth.verify_csrf_token(
+                session, session_token=tokens.session_token,
+                csrf_token=tokens.csrf_token, now=now + timedelta(minutes=5),
+            ))
+            self.assertFalse(self.auth.verify_csrf_token(
+                session, session_token=tokens.session_token,
+                csrf_token="wrong-csrf", now=now + timedelta(minutes=5),
+            ))
+
+    def test_verify_csrf_token_rejects_revoked_session(self):
+        # [R7] CSRF 校验必须复查会话吊销状态：已登出的会话不得通过。
+        self._create_user()
+        now = datetime(2026, 5, 12, 10, 0, tzinfo=timezone.utc)
+        with self.Session() as session:
+            tokens = self.auth.login_user(
+                session, username="admin", password="very-strong-password", now=now,
+            )
+            session.commit()
+        with self.Session() as session:
+            self.auth.logout_session(
+                session, session_token=tokens.session_token, now=now + timedelta(minutes=1),
+            )
+            session.commit()
+        with self.Session() as session:
+            self.assertFalse(self.auth.verify_csrf_token(
+                session, session_token=tokens.session_token,
+                csrf_token=tokens.csrf_token, now=now + timedelta(minutes=2),
+            ))
+
+    def test_verify_csrf_token_rejects_expired_session(self):
+        # [R7] CSRF 校验必须复查会话过期。
+        self._create_user()
+        now = datetime(2026, 5, 12, 11, 0, tzinfo=timezone.utc)
+        with self.Session() as session:
+            tokens = self.auth.login_user(
+                session, username="admin", password="very-strong-password",
+                ttl_seconds=1, now=now,
+            )
+            session.commit()
+        with self.Session() as session:
+            self.assertFalse(self.auth.verify_csrf_token(
+                session, session_token=tokens.session_token,
+                csrf_token=tokens.csrf_token, now=now + timedelta(seconds=5),
+            ))
+
     def test_require_permission_raises_for_missing_permission(self):
         current = self.auth.CurrentUser(
             id=1,
