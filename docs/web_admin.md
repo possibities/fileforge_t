@@ -100,7 +100,7 @@ set +a
 alembic upgrade head
 ```
 
-当前 schema 由 `0005_rebuild_upload_online_processing` 重建。项目没有生产数据，因此该迁移会删除除 `alembic_version` 外的旧应用表，再按当前 ORM 建表。
+当前 schema 由 `0005_upload_online_processing` 重建。项目没有生产数据，因此该迁移会删除除 `alembic_version` 外的旧应用表，再按当前 ORM 建表。
 
 当前 Web 后台需要的核心表:
 

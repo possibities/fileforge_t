@@ -138,7 +138,7 @@
 
 ## 迁移策略
 
-当前使用 `0005_rebuild_upload_online_processing`：
+当前使用 `0005_upload_online_processing`：
 
 - 反射当前数据库。
 - 删除除 `alembic_version` 外的所有应用表。

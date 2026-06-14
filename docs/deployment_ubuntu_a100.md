@@ -195,7 +195,7 @@ cd ~/work/fileforge
 alembic upgrade head
 ```
 
-应该完成到 `0005_rebuild_upload_online_processing`,建出上传与在线跑批所需的当前 schema。
+应该完成到 `0005_upload_online_processing`,建出上传与在线跑批所需的当前 schema。
 
 验证:
 

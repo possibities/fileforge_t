@@ -1,6 +1,6 @@
 """rebuild schema for upload and online processing
 
-Revision ID: 0005_rebuild_upload_online_processing
+Revision ID: 0005_upload_online_processing
 Revises: 0004_web_sessions
 Create Date: 2026-06-08
 
@@ -20,7 +20,7 @@ from alembic import op
 from infrastructure.db.models import Base
 
 
-revision: str = "0005_rebuild_upload_online_processing"
+revision: str = "0005_upload_online_processing"
 down_revision: Union[str, None] = "0004_web_sessions"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
