@@ -2,6 +2,8 @@
 
 档案分类系统的 LLM 推理已外置到独立的 vLLM OpenAI 兼容服务。客户端只通过 HTTP 调用，不在本进程加载模型。
 
+> 本文命令面向真实 GPU 服务器。当前会话若为非可执行环境,只能静态维护文档,不能启动 vLLM 或执行健康检查。
+
 ## 1. 模型位置
 
 模型已下载到：
@@ -26,8 +28,6 @@ vllm serve ~/.cache/huggingface/hub/Qwen3-32B-AWQ \
   --max-model-len 8192 \
   --gpu-memory-utilization 0.90
 ```
-sudo pkill -f vllm
-
 
 关键参数说明：
 
@@ -104,3 +104,5 @@ python main.py
 **连接超时**：确认服务所在主机防火墙开放 8000 端口；跨机访问必须 `--host 0.0.0.0`。
 
 **首次请求极慢**：vLLM 启动后首次请求会编译 CUDA graph，几十秒到一两分钟都正常，后续稳定。加 `--enforce-eager` 可避免但会损失吞吐。
+
+**停止服务**：优先在 tmux/screen/systemd 中正常 `Ctrl-C` 或 `systemctl stop`；临时排障时才使用 `sudo pkill -f vllm`。

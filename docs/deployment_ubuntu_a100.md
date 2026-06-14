@@ -2,6 +2,8 @@
 
 从零起,把 fileforge 项目跑到"OCR 管线 + Web 后台 + PG 入库"全功能可用。目标环境:Ubuntu 22.04 LTS,NVIDIA A100 80GB,CUDA 12.x,Miniforge + Mamba。
 
+> 当前文档中的命令面向真实 Ubuntu/GPU/数据库可执行环境。若当前会话是非可执行环境,只能做静态核对和文档更新,不要把下列命令写成已执行结果。
+
 ---
 
 ## 0 时间预算
@@ -164,18 +166,27 @@ sudo systemctl enable --now postgresql
 ```bash
 sudo -u postgres psql <<'SQL'
 CREATE USER fileforge WITH PASSWORD 'change-this-strong-password';
-CREATE DATABASE fileforge OWNER fileforge;
-GRANT ALL PRIVILEGES ON DATABASE fileforge TO fileforge;
+CREATE DATABASE fileforge_current OWNER fileforge;
+GRANT ALL PRIVILEGES ON DATABASE fileforge_current TO fileforge;
 SQL
 ```
 
 ### 7.3 客户端连接串
 
 ```bash
-export DATABASE_URL="postgresql+psycopg://fileforge:change-this-strong-password@127.0.0.1:5432/fileforge"
+export DATABASE_URL="postgresql+psycopg://fileforge:change-this-strong-password@127.0.0.1:5432/fileforge_current"
 ```
 
-(把它写进 `~/.bashrc` 或专门的 env 文件 `~/work/fileforge/.env` 后 `source` 进来。)
+当前项目如果要和大改前旧库隔离,推荐使用新库名 `fileforge_current`。数据库名不写死在代码里,只由 `DATABASE_URL` 决定。
+
+如果 PostgreSQL 跑在 Docker 容器里,并且容器名为 `fileforge-pg`,可这样创建新库:
+
+```bash
+docker exec -it fileforge-pg psql -U fileforge -d postgres -c \
+"CREATE DATABASE fileforge_current OWNER fileforge;"
+```
+
+长期固定配置建议放到 `/etc/fileforge/fileforge.env`,见 §10.2。
 
 ### 7.4 跑 Alembic 迁移
 
@@ -249,7 +260,7 @@ mkdir -p input_documents
 
 ```bash
 # 必填(DB 写入)
-export DATABASE_URL="postgresql+psycopg://fileforge:change-this-strong-password@127.0.0.1:5432/fileforge"
+export DATABASE_URL="postgresql+psycopg://fileforge:change-this-strong-password@127.0.0.1:5432/fileforge_current"
 export PROJECT_KEY='demo_2025'         # 项目稳定标识,序号在项目内连续
 export PROJECT_NAME='2025 演示项目'    # 可选,用于显示
 export BATCH_KEY="$(date +%Y%m%d_%H%M%S)_run01"   # 批次唯一标识
@@ -321,7 +332,7 @@ tmux new -s webadmin
 mamba activate fileforge
 
 cd ~/work/fileforge
-export DATABASE_URL="postgresql+psycopg://fileforge:change-this-strong-password@127.0.0.1:5432/fileforge"
+export DATABASE_URL="postgresql+psycopg://fileforge:change-this-strong-password@127.0.0.1:5432/fileforge_current"
 
 # 单机访问
 uvicorn web_admin.app:create_app --factory --host 127.0.0.1 --port 8080
@@ -385,6 +396,95 @@ python -m utils.processing_runner --upload-batch-id 1
 
 该入口适合演示补跑或后续接入独立 worker。它创建的处理批次和任务与 Web “开始处理”按钮一致。
 
+### 10.2 长期固定环境变量
+
+服务器长期运行时,把当前项目的数据库连接、LLM、OCR 和 Web 配置固定到系统 env 文件,不要改代码:
+
+```bash
+sudo mkdir -p /etc/fileforge
+sudo nano /etc/fileforge/fileforge.env
+```
+
+示例内容:
+
+```bash
+DATABASE_URL=postgresql+psycopg://fileforge:change-this-strong-password@127.0.0.1:5432/fileforge_current
+
+LLM_BASE_URL=http://127.0.0.1:8000/v1
+LLM_MODEL_NAME=qwen3-32b-awq
+LLM_API_KEY=EMPTY
+LLM_ENABLE_THINKING=false
+
+OCR_USE_GPU=true
+
+WEB_SESSION_COOKIE_NAME=fileforge_session
+WEB_SESSION_TTL_SECONDS=28800
+WEB_COOKIE_SECURE=false
+WEB_CSRF_ENABLED=true
+WEB_UPLOAD_STORAGE_ROOT=input_documents/web_uploads
+WEB_PROCESSING_OUTPUT_ROOT=output_results/web_runs
+WEB_MAX_UPLOAD_BYTES=209715200
+WEB_MAX_UPLOAD_FILES=2000
+```
+
+保护权限:
+
+```bash
+sudo chmod 600 /etc/fileforge/fileforge.env
+```
+
+手动运行迁移、初始化账号、`main.py` 或 CLI 前加载:
+
+```bash
+cd ~/work/fileforge
+mamba activate fileforge
+set -a
+source /etc/fileforge/fileforge.env
+set +a
+```
+
+如果数据库密码包含 `@`、`:`、`/`、`#` 等字符,需要在 `DATABASE_URL` 中 URL 编码。
+
+### 10.3 systemd 启动 Web
+
+创建服务:
+
+```bash
+sudo nano /etc/systemd/system/fileforge-web.service
+```
+
+示例内容,按实际路径替换 `WorkingDirectory` 和 `ExecStart`:
+
+```ini
+[Unit]
+Description=FileForge Web Admin
+After=network.target docker.service
+
+[Service]
+WorkingDirectory=/home/ubuntu/work/fileforge
+EnvironmentFile=/etc/fileforge/fileforge.env
+ExecStart=/home/ubuntu/miniforge3/envs/fileforge/bin/uvicorn web_admin.app:create_app --factory --host 0.0.0.0 --port 8080
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启用:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now fileforge-web
+sudo systemctl status fileforge-web
+```
+
+查看日志:
+
+```bash
+journalctl -u fileforge-web -f
+```
+
 ---
 
 ## 11 验证检查清单
@@ -394,7 +494,7 @@ python -m utils.processing_runner --upload-batch-id 1
 - [ ] `nvidia-smi` 看到 GPU 进程占用(vLLM 进程)
 - [ ] `curl http://localhost:8000/v1/models` 返回 `qwen3-32b-awq`
 - [ ] `psql "$DATABASE_URL" -c "\dt"` 列出全部表
-- [ ] `python -m unittest discover -s tests -p "test_*.py"` 全绿(约 327 用例)
+- [ ] `python -m unittest discover -s tests -p "test_*.py"` 在目标环境通过
 - [ ] `python main.py` 跑通至少 1 个 demo 档案,`output_results/` 出现 JSON/CSV
 - [ ] `psql "$DATABASE_URL" -c "SELECT count(*) FROM archive_records"` 返回 ≥ 1
 - [ ] Web 后台 `http://<host>:8080/login` 能登录
@@ -413,7 +513,7 @@ python -m utils.processing_runner --upload-batch-id 1
 
 **`paddleocr` 初始化报 GPU 找不到**:`paddlepaddle-gpu` 版本与 CUDA 不匹配,或 `LD_LIBRARY_PATH` 缺 cuDNN。试 `pip install paddlepaddle-gpu==2.6.2 -i https://www.paddlepaddle.org.cn/packages/stable/cu120/`(选对应 CUDA 版本)。降级方案:`OCR_USE_GPU=false`(慢 5–10 倍但能跑)。
 
-**Alembic 迁移报"relation already exists"**:数据库不干净。`DROP DATABASE fileforge` 后重建。
+**Alembic 迁移报"relation already exists"**:数据库不干净。`DROP DATABASE fileforge_current` 后重建。
 
 **main.py 报 `RuntimeError: DATABASE_URL 已设置,但未指定 PROJECT_KEY`**:`PROJECT_KEY` / `BATCH_KEY` 必须都设。或者全部不设(纯文件路径),`DATABASE_URL` 留空。
 

@@ -1,0 +1,64 @@
+@startuml
+title FileForge 系统组件图
+
+skinparam componentStyle rectangle
+
+actor "档案整理人员" as User
+
+package "用户入口" {
+  [Web 后台] as Web
+  [CLI 批处理入口] as CLI
+}
+
+package "Web 管理模块" {
+  [登录与会话] as Auth
+  [单位管理] as Org
+  [整理项目管理] as Project
+  [上传管理] as Upload
+  [在线跑批进度] as Progress
+  [档案结果复核] as Review
+}
+
+package "核心处理模块" {
+  [BatchProcessor] as Batch
+  [ArchiveClassifier] as Classifier
+  [OcrClient] as OCR
+  [LlmClient] as Parser
+  [RulesEngine] as Rules
+  [SequenceGenerator] as Sequence
+  [Exporter] as Exporter
+}
+
+database "PostgreSQL" as DB
+cloud "vLLM OpenAI 兼容服务" as VLLM
+component "PaddleOCR" as Paddle
+folder "JSON/CSV 输出" as Files
+
+User --> Web
+User --> CLI
+
+Web --> Auth
+Web --> Org
+Web --> Project
+Web --> Upload
+Web --> Progress
+Web --> Review
+
+Upload --> Batch
+CLI --> Batch
+Batch --> Classifier
+Classifier --> OCR
+Classifier --> Parser
+Classifier --> Rules
+Classifier --> Sequence
+Batch --> Exporter
+
+OCR --> Paddle
+Parser --> VLLM
+Batch --> DB
+Progress --> DB
+Review --> DB
+Exporter --> Files
+
+@enduml
+

@@ -1,0 +1,29 @@
+flowchart TB
+    user[用户/档案整理人员] --> web[Web 后台]
+    user --> cli[CLI 批处理入口]
+
+    web --> upload[上传管理]
+    web --> review[结果查看与人工修正]
+    cli --> batch[批量处理器]
+    upload --> batch
+
+    subgraph core[核心处理层]
+        batch --> classifier[单档案处理编排]
+        classifier --> ocr[OCR 文本识别]
+        classifier --> extract[字段解析]
+        classifier --> rules[规则校正]
+        classifier --> seq[件号/档号生成]
+        batch --> exporter[JSON/CSV 导出]
+    end
+
+    subgraph infra[基础设施层]
+        ocr --> paddle[PaddleOCR]
+        extract --> vllm[vLLM OpenAI 兼容服务]
+        batch --> db[(PostgreSQL)]
+        review --> db
+        exporter --> files[输出文件]
+    end
+
+    db --> query[批次/档案/修订/审计查询]
+    query --> web
+

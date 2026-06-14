@@ -1,0 +1,19 @@
+flowchart TD
+    start([开始演示]) --> login[登录 Web 后台]
+    login --> org[确认或创建单位]
+    org --> project[创建整理项目]
+    project --> upload[上传图片或 zip]
+    upload --> start_batch[点击开始处理]
+    start_batch --> progress[查看在线跑批进度]
+    progress --> done{处理完成?}
+    done -- 否 --> progress
+    done -- 是 --> list[查看档案结果列表]
+    list --> detail[打开档案详情]
+    detail --> correct{需要修正?}
+    correct -- 否 --> export[查看 JSON/CSV 导出]
+    correct -- 是 --> edit[提交人工修正]
+    edit --> revision[查看修订记录]
+    revision --> audit[查看审计记录]
+    audit --> export
+    export --> end([演示结束])
+

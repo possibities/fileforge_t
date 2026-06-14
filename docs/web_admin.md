@@ -2,6 +2,8 @@
 
 本文说明当前 `web_admin/` 服务端渲染后台的实际运行方式。Web 后台依赖 PostgreSQL；浏览、用户管理、项目管理、人工修正只需要 Web/DB 依赖，浏览器上传后启动在线跑批时才需要 PaddleOCR、vLLM 和完整管线运行环境。
 
+> 本文命令面向可执行目标环境。当前会话若为非可执行环境,只做静态阅读和文档维护,不声明 Web、OCR、vLLM、迁移或测试已运行。
+
 ## 1 安装依赖
 
 只运行后台页面:
@@ -17,13 +19,13 @@ pip install -r requirements/web.txt
 正式运行使用 PostgreSQL:
 
 ```bash
-export DATABASE_URL="postgresql+psycopg://user:password@127.0.0.1:5432/fileforge"
+export DATABASE_URL="postgresql+psycopg://user:password@127.0.0.1:5432/fileforge_current"
 ```
 
 Windows PowerShell:
 
 ```powershell
-$env:DATABASE_URL="postgresql+psycopg://user:password@127.0.0.1:5432/fileforge"
+$env:DATABASE_URL="postgresql+psycopg://user:password@127.0.0.1:5432/fileforge_current"
 ```
 
 可选 Web 配置:
@@ -40,6 +42,55 @@ export WEB_MAX_UPLOAD_FILES="2000"
 ```
 
 生产 HTTPS 后应把 `WEB_COOKIE_SECURE=true`。`WEB_UPLOAD_STORAGE_ROOT` 保存上传原图，`WEB_PROCESSING_OUTPUT_ROOT` 保存在线跑批导出的 JSON/CSV。
+
+### 2.1 长期固定配置
+
+服务器长期运行时不要把数据库名和密码写进代码。推荐固定到 `/etc/fileforge/fileforge.env`:
+
+```bash
+sudo mkdir -p /etc/fileforge
+sudo nano /etc/fileforge/fileforge.env
+```
+
+示例内容:
+
+```bash
+DATABASE_URL=postgresql+psycopg://fileforge:change-this-strong-password@127.0.0.1:5432/fileforge_current
+
+LLM_BASE_URL=http://127.0.0.1:8000/v1
+LLM_MODEL_NAME=qwen3-32b-awq
+LLM_API_KEY=EMPTY
+LLM_ENABLE_THINKING=false
+
+OCR_USE_GPU=true
+
+WEB_SESSION_COOKIE_NAME=fileforge_session
+WEB_SESSION_TTL_SECONDS=28800
+WEB_COOKIE_SECURE=false
+WEB_CSRF_ENABLED=true
+WEB_UPLOAD_STORAGE_ROOT=input_documents/web_uploads
+WEB_PROCESSING_OUTPUT_ROOT=output_results/web_runs
+WEB_MAX_UPLOAD_BYTES=209715200
+WEB_MAX_UPLOAD_FILES=2000
+```
+
+保护权限:
+
+```bash
+sudo chmod 600 /etc/fileforge/fileforge.env
+```
+
+手动执行迁移、初始化账号或运行 CLI 前加载:
+
+```bash
+cd /path/to/fileforge
+source .venv/bin/activate
+set -a
+source /etc/fileforge/fileforge.env
+set +a
+```
+
+如果数据库密码包含 `@`、`:`、`/`、`#` 等字符,需要在 `DATABASE_URL` 里做 URL 编码;也可以先使用不含这些字符的强密码降低部署复杂度。
 
 ## 3 建表迁移
 
@@ -98,6 +149,46 @@ uvicorn web_admin.app:create_app --factory --host 0.0.0.0 --port 8080
 
 ```text
 http://127.0.0.1:8080/login
+```
+
+### 5.1 systemd 长期运行
+
+如果希望 Web 后台随服务器启动,创建 systemd 服务:
+
+```bash
+sudo nano /etc/systemd/system/fileforge-web.service
+```
+
+示例内容,把 `/path/to/fileforge` 换成实际项目路径:
+
+```ini
+[Unit]
+Description=FileForge Web Admin
+After=network.target docker.service
+
+[Service]
+WorkingDirectory=/path/to/fileforge
+EnvironmentFile=/etc/fileforge/fileforge.env
+ExecStart=/path/to/fileforge/.venv/bin/uvicorn web_admin.app:create_app --factory --host 0.0.0.0 --port 8080
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启动并设置开机自启:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now fileforge-web
+sudo systemctl status fileforge-web
+```
+
+查看日志:
+
+```bash
+journalctl -u fileforge-web -f
 ```
 
 ## 6 上传和在线跑批
@@ -178,10 +269,10 @@ python -m utils.processing_runner --upload-batch-id 1
 
 ## 10 验证建议
 
-在可运行环境中安装依赖后,至少执行:
+在可运行目标环境中安装依赖后,至少执行:
 
 ```bash
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
-如果只验证 Web 登录和查询页面,不要求启动 PaddleOCR、vLLM 或运行 `python main.py`。如果验证 `/uploads` 的在线跑批,必须准备可访问的 vLLM 服务和 OCR 运行环境。
+如果只验证 Web 登录和查询页面,不要求启动 PaddleOCR、vLLM 或运行 `python main.py`。如果验证 `/uploads` 的在线跑批,必须准备可访问的 vLLM 服务和 OCR 运行环境。非可执行环境只能确认文档和代码路径是否一致。

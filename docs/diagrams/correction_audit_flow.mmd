@@ -1,0 +1,14 @@
+flowchart TB
+    result[自动处理结果] --> review[人工复核]
+    review --> decision{字段是否需要修正?}
+    decision -- 否 --> keep[保持最终元数据]
+    decision -- 是 --> edit[编辑题名/责任者/分类号/保管期限]
+    edit --> validate[表单校验]
+    validate --> save[更新最终元数据]
+    save --> revision[写入修订记录]
+    save --> audit[写入审计日志]
+    revision --> protected[标记人工修正状态]
+    audit --> trace[保留操作追溯]
+    protected --> keep
+    trace --> keep
+

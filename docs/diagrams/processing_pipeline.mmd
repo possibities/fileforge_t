@@ -1,0 +1,17 @@
+flowchart LR
+    input[扫描图片或 zip] --> scan[目录/上传批次扫描]
+    scan --> ocr[OCR 识别与版面文本重建]
+    ocr --> text[按页 OCR 文本]
+    text --> extract[结构化字段解析]
+    extract --> raw[初始元数据]
+    raw --> rules[规则校正]
+    rules --> final[最终元数据]
+    final --> seq[件号和档号生成]
+    seq --> record[档案记录]
+    record --> db[(数据库记录)]
+    record --> json[JSON 导出]
+    record --> csv[CSV 导出]
+
+    rules -.校正.-> final
+    raw -.保留追溯.-> db
+

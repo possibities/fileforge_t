@@ -54,11 +54,10 @@ class LlmClient:
     """
     通过 OpenAI 兼容 API 调用远端 vLLM 服务。
 
-    与旧版 llama-cpp 内嵌推理的差异：
-      - 不再加载模型文件，只持有 HTTP 客户端
-      - `model` 字段传服务端 `--served-model-name`，非本地路径
-      - JSON 强制依赖 vLLM 的 `response_format={"type": "json_object"}`
-      - Qwen3 系列通过 `chat_template_kwargs.enable_thinking=False` 关闭思考模式
+    当前进程只持有 HTTP 客户端，不负责加载或调度模型权重。
+    `model` 字段传服务端 `--served-model-name`，JSON 输出依赖 vLLM 的
+    `response_format={"type": "json_object"}`；Qwen3 系列通过
+    `chat_template_kwargs.enable_thinking=False` 关闭思考模式。
     """
 
     def __init__(

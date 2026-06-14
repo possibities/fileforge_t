@@ -2,6 +2,8 @@
 
 本文覆盖当前已经落地的数据库基础 CLI 能力:人员/用户管理、登录校验、批次/档案/详情/修订/审计查询。Web 管理后台运行方式见 `docs/web_admin.md`。它不启动 OCR、LLM、PaddleOCR、vLLM,也不运行完整管线 `python main.py`。
 
+> 本文命令必须在安装了 DB 依赖并能创建进程的目标环境中执行。当前会话若为非可执行环境,只能静态核对 CLI 入口和文档,不能声称命令已运行。
+
 ## 1 安装依赖
 
 ```bash
@@ -13,13 +15,13 @@ pip install -r requirements/db.txt
 正式运行使用 PostgreSQL。设置 `DATABASE_URL`:
 
 ```bash
-export DATABASE_URL="postgresql+psycopg://user:password@127.0.0.1:5432/fileforge"
+export DATABASE_URL="postgresql+psycopg://user:password@127.0.0.1:5432/fileforge_current"
 ```
 
 Windows PowerShell:
 
 ```powershell
-$env:DATABASE_URL="postgresql+psycopg://user:password@127.0.0.1:5432/fileforge"
+$env:DATABASE_URL="postgresql+psycopg://user:password@127.0.0.1:5432/fileforge_current"
 ```
 
 ## 3 建表迁移
@@ -146,13 +148,13 @@ python -m utils.archive_query audit list --target-type archive --target-id 1
 
 ## 6 本地验收
 
-当前环境只需要 SQLite 单测即可验证这些数据库基础功能:
+可执行开发环境只需要 SQLite 单测即可验证这些数据库基础功能:
 
 ```bash
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
-不要为这组验收启动 PaddleOCR、vLLM、PostgreSQL,也不要运行 `python main.py`。
+不要为这组验收启动 PaddleOCR、vLLM、PostgreSQL,也不要运行 `python main.py`。非可执行环境下跳过命令执行,只保留为目标环境验证步骤。
 
 ## 7 Web 后台入口
 

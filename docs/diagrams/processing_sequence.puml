@@ -1,0 +1,49 @@
+@startuml
+title Web 上传批次处理时序图
+
+actor "档案整理人员" as User
+participant "Web 后台" as Web
+participant "上传存储" as Storage
+participant "处理批次服务" as Processing
+participant "BatchProcessor" as Batch
+participant "ArchiveClassifier" as Classifier
+participant "OCR" as OCR
+participant "字段解析服务" as Parser
+participant "规则引擎" as Rules
+participant "序号生成器" as Sequence
+database "PostgreSQL" as DB
+participant "导出器" as Exporter
+
+User -> Web: 选择整理项目并上传 zip/图片
+Web -> Storage: 保存上传文件
+Storage --> Web: 返回文件清单和档案数量
+Web -> DB: 写入 upload_batches 和 uploaded_files
+User -> Web: 点击开始处理
+Web -> Processing: 创建 processing_batch 和 jobs
+Processing -> DB: 写入批次和任务
+Web --> User: 跳转到进度页
+
+Processing -> Batch: 后台执行批处理
+loop 每份档案
+  Batch -> Classifier: 处理一份档案
+  Classifier -> OCR: 识别扫描图片
+  OCR --> Classifier: OCR 文本
+  Classifier -> Parser: 解析结构化字段
+  Parser --> Classifier: 初始元数据
+  Classifier -> Rules: 应用业务规则
+  Rules --> Classifier: 校正后元数据
+  Classifier -> Sequence: 生成件号和档号
+  Sequence --> Classifier: 最终编号
+  Classifier --> Batch: 档案结果
+  Batch -> DB: 写入档案、页面、trace、事件
+end
+
+Batch -> Exporter: 导出 JSON/CSV
+Exporter --> Batch: 导出文件路径
+Batch -> DB: 写入导出记录和批次完成状态
+User -> Web: 刷新进度页
+Web -> DB: 查询批次、任务和事件
+Web --> User: 展示处理完成和结果入口
+
+@enduml
+
