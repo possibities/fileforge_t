@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import mimetypes
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Query, Request, Response, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -12,9 +14,12 @@ from infrastructure.db.models import (
     CORRECTION_STATUS,
     PROCESSING_STATUS,
     REVIEW_STATUS,
+    ArchivePage,
     ArchiveRecord,
     ProcessingBatch,
     Project,
+    UploadBatch,
+    UploadedFile,
 )
 from infrastructure.db.repositories import (
     EDITABLE_FIELDS,
@@ -38,6 +43,7 @@ router = APIRouter()
 ARCHIVE_VIEW_PERMISSION = "archive:view"
 AUDIT_VIEW_PERMISSION = "audit:view"
 ARCHIVE_CORRECT_PERMISSION = "archive:correct"
+PREVIEW_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tif", ".tiff"}
 
 
 def _can_access_organization(
@@ -162,6 +168,53 @@ def _bad_request(exc: ValueError) -> Response:
         content=str(exc).encode("utf-8"),
         media_type="text/plain; charset=utf-8",
     )
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _resolve_page_image_path(
+    session: Session,
+    *,
+    page: ArchivePage,
+    batch: ProcessingBatch,
+) -> Optional[Path]:
+    candidates: list[Path] = []
+
+    if page.uploaded_file_id is not None:
+        uploaded = session.get(UploadedFile, page.uploaded_file_id)
+        if uploaded is not None:
+            upload = session.get(UploadBatch, uploaded.upload_batch_id)
+            upload_root = Path(upload.storage_root).resolve() if upload is not None else None
+            stored_path = Path(uploaded.stored_path)
+            candidate = (
+                stored_path.resolve()
+                if stored_path.is_absolute() or upload_root is None
+                else (upload_root / stored_path).resolve()
+            )
+            if upload_root is not None and _is_relative_to(candidate, upload_root):
+                candidates.append(candidate)
+
+    if batch.input_dir:
+        input_root = Path(batch.input_dir).resolve()
+        image_path = Path(page.image_path.replace("\\", "/"))
+        candidate = (
+            image_path.resolve()
+            if image_path.is_absolute()
+            else (input_root / image_path).resolve()
+        )
+        if _is_relative_to(candidate, input_root):
+            candidates.append(candidate)
+
+    for candidate in candidates:
+        if candidate.suffix.lower() in PREVIEW_IMAGE_EXTENSIONS and candidate.is_file():
+            return candidate
+    return None
 
 
 @router.get("/batches")
@@ -387,6 +440,37 @@ def get_archive_detail(
             "notice": notice,
         },
     )
+
+
+@router.get("/archives/{archive_id}/pages/{page_id}/image")
+def get_archive_page_image(
+    request: Request,
+    archive_id: int,
+    page_id: int,
+    session: Session = Depends(get_session),
+) -> Response:
+    current_user, error_response = _require_archive_view(request, session)
+    if error_response is not None:
+        return error_response
+
+    archive = session.get(ArchiveRecord, archive_id)
+    if archive is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    access = _can_access_archive(session, current_user, archive)
+    if access is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    batch, _project = access
+
+    page = session.get(ArchivePage, page_id)
+    if page is None or page.archive_id != archive_id:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+
+    image_path = _resolve_page_image_path(session, page=page, batch=batch)
+    if image_path is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+
+    media_type = mimetypes.guess_type(str(image_path))[0] or "application/octet-stream"
+    return FileResponse(str(image_path), media_type=media_type)
 
 
 @router.get("/archives/{archive_id}/revisions")

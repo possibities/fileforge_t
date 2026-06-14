@@ -49,14 +49,19 @@ def _make_engine():
 
 
 class _StubClassifier:
-    def __init__(self, payload, trace=None, rewrite_trace=None):
+    def __init__(self, payload, trace=None, rewrite_trace=None, progress_events=None):
         self._payload = payload
         self.calls = 0
         self.last_extraction_trace = trace
         self.last_rewrite_trace = rewrite_trace
+        self.progress_events = progress_events or []
 
     def process_multi_page_document(self, archive_name, image_paths):
         self.calls += 1
+        callback = getattr(self, "progress_callback", None)
+        if callback is not None:
+            for event in self.progress_events:
+                callback(**event)
         return dict(self._payload)
 
 
@@ -143,6 +148,44 @@ class TestBatchRecorder(unittest.TestCase):
             self.assertGreaterEqual(len(events), 2)
             self.assertIn("stage_started", {event.event_type for event in events})
             self.assertIn("stage_finished", {event.event_type for event in events})
+
+    def test_classifier_progress_callback_writes_job_events(self):
+        recorder = self._make_recorder()
+        classifier = _StubClassifier(
+            self.payload,
+            progress_events=[
+                {
+                    "stage": "llm",
+                    "status": "llm_running",
+                    "progress": 45,
+                    "message": "开始 LLM 抽取",
+                },
+                {
+                    "stage": "rules",
+                    "status": "rules_running",
+                    "progress": 75,
+                    "message": "应用规则",
+                },
+            ],
+        )
+
+        BatchProcessor(classifier, recorder=recorder).batch_process_archives(
+            self.archive_dict, output_dir=str(self.tmp_root / "out")
+        )
+
+        with self.Session() as session:
+            job = session.scalar(select(ProcessingJob))
+            self.assertEqual(job.progress, 100)
+            events = session.scalars(
+                select(ProcessingEvent)
+                .where(ProcessingEvent.job_id == job.id)
+                .order_by(ProcessingEvent.id.asc())
+            ).all()
+            stages = [event.stage for event in events]
+            self.assertIn("llm", stages)
+            self.assertIn("rules", stages)
+            llm_event = next(event for event in events if event.stage == "llm")
+            self.assertEqual(llm_event.payload["progress"], 45)
 
     def test_skip_success_on_rerun(self):
         # 第一次：正常跑

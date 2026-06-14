@@ -462,6 +462,34 @@ def record_job_start(
     return job
 
 
+def update_job_progress(
+    session: Session,
+    *,
+    job: ProcessingJob,
+    status: str,
+    stage: str,
+    progress: int,
+    message: Optional[str] = None,
+) -> ProcessingJob:
+    previous_stage = job.current_stage
+    bounded_progress = max(0, min(100, int(progress)))
+    job.status = status
+    job.current_stage = stage
+    job.progress = max(job.progress or 0, bounded_progress)
+    if job.started_at is None:
+        job.started_at = datetime.now(timezone.utc)
+    record_processing_event(
+        session,
+        batch_id=job.batch_id,
+        job_id=job.id,
+        event_type="stage_started" if stage != previous_stage else "stage_progress",
+        stage=stage,
+        message=message or f"{stage} {job.progress}%",
+        payload={"progress": job.progress, "status": status},
+    )
+    return job
+
+
 def mark_job_complete(
     session: Session,
     *,
@@ -677,6 +705,7 @@ __all__ = [
     "find_existing_success",
     "upsert_pages",
     "record_job_start",
+    "update_job_progress",
     "record_job_attempt",
     "mark_job_complete",
     "record_processing_event",

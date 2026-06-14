@@ -4,7 +4,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List
+from typing import Callable, Dict, List, Optional
 
 from config.config import Config
 from constants import METADATA_SCHEMA
@@ -46,6 +46,7 @@ class ArchiveClassifier:
         # 暴露最近一次"简报题名二次重写"的 LLM trace,同样落库审计 [R2]。
         # 同上契约：未触发重写(无 _需重构简报题名 标志)时保持 None。
         self.last_rewrite_trace = None
+        self.progress_callback: Optional[Callable[..., None]] = None
 
     # ── 公开接口 ───────────────────────────────────────────────────────────────
 
@@ -60,6 +61,7 @@ class ArchiveClassifier:
 
         self.last_extraction_trace = None
         self.last_rewrite_trace = None
+        self._emit_progress("ocr", "ocr_running", 10, "开始 OCR 识别")
         ocr_text = self.ocr_client.extract_text_from_images(image_paths)
 
         if not ocr_text:
@@ -80,6 +82,7 @@ class ArchiveClassifier:
         metadata = self._extract_metadata_from_text(ocr_text)
 
         if metadata:
+            self._emit_progress("export", "exporting", 90, "生成档案结果")
             metadata['数字化时间'] = get_file_creation_time(image_paths[0])
             metadata['档案文件夹'] = archive_name
 
@@ -87,8 +90,18 @@ class ArchiveClassifier:
 
     # ── 私有方法 ───────────────────────────────────────────────────────────────
 
+    def _emit_progress(self, stage: str, status: str, progress: int, message: str) -> None:
+        callback = getattr(self, "progress_callback", None)
+        if callback is None:
+            return
+        try:
+            callback(stage=stage, status=status, progress=progress, message=message)
+        except Exception as exc:  # pragma: no cover - callback failures are non-critical
+            logger.warning("[进度回调] 更新失败: %s", exc)
+
     def _extract_metadata_from_text(self, ocr_text: str) -> Dict:
         """使用LLM从OCR文本中提取元数据，并应用规则修正"""
+        self._emit_progress("llm", "llm_running", 45, "OCR 完成，开始 LLM 抽取")
         metadata = self.llm_client.extract_metadata(ocr_text, self.extraction_prompt)
         # 把 LlmClient 本次调用的 trace 透传出去,允许 None
         self.last_extraction_trace = getattr(self.llm_client, "last_trace", None)
@@ -96,10 +109,12 @@ class ArchiveClassifier:
         if not metadata:
             return {}
 
+        self._emit_progress("rules", "rules_running", 75, "LLM 抽取完成，应用规则")
         metadata = self.rules_engine.apply_all(metadata, ocr_text)
 
         # 规则 11 在标题异常时会设 _需重构简报题名=True，此处是唯一消费者
         if metadata.pop("_需重构简报题名", False):
+            self._emit_progress("briefing_rewrite", "rules_running", 85, "重写简报题名")
             self._rewrite_briefing_title(metadata, ocr_text)
 
         logger.info(

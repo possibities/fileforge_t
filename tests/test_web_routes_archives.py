@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+import tempfile
 import unittest
 
 
@@ -47,6 +49,13 @@ def _make_engine():
 @unittest.skipUnless(DEPENDENCIES_AVAILABLE, f"web deps missing: {_IMPORT_ERROR}")
 class TestArchiveQueryRoutes(unittest.TestCase):
     def setUp(self):
+        self.tmp_images = tempfile.TemporaryDirectory()
+        self.image_root = Path(self.tmp_images.name)
+        image_dir = self.image_root / "arc_spring"
+        image_dir.mkdir(parents=True, exist_ok=True)
+        self.page_bytes = b"fake-jpeg-bytes"
+        (image_dir / "page_001.jpg").write_bytes(self.page_bytes)
+
         self.engine = _make_engine()
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
@@ -82,6 +91,7 @@ class TestArchiveQueryRoutes(unittest.TestCase):
                 project_id=project_a.id,
                 batch_key="batch_a",
                 batch_status="completed",
+                input_dir=str(self.image_root),
                 organization_id=org_a.id,
             )
             batch_b = ProcessingBatch(
@@ -134,14 +144,15 @@ class TestArchiveQueryRoutes(unittest.TestCase):
             self.archive_spring_id = archive_spring.id
             self.archive_other_org_id = archive_other_org.id
 
-            session.add(
-                ArchivePage(
-                    archive_id=archive_spring.id,
-                    page_no=1,
-                    image_path="input/arc_spring/page_001.jpg",
-                    image_name="page_001.jpg",
-                )
+            page = ArchivePage(
+                archive_id=archive_spring.id,
+                page_no=1,
+                image_path="arc_spring/page_001.jpg",
+                image_name="page_001.jpg",
             )
+            session.add(page)
+            session.flush()
+            self.archive_spring_page_id = page.id
             session.commit()
 
         self.app = create_app(database_url="sqlite://")
@@ -150,6 +161,7 @@ class TestArchiveQueryRoutes(unittest.TestCase):
     def tearDown(self):
         Base.metadata.drop_all(self.engine)
         self.engine.dispose()
+        self.tmp_images.cleanup()
 
     def _login(self, client, username: str, password: str) -> None:
         resp = client.post(
@@ -248,6 +260,21 @@ class TestArchiveQueryRoutes(unittest.TestCase):
         self.assertIn("整编完成-FM标记", body)
         self.assertIn("repaired", body)
         self.assertIn("page_001.jpg", body)
+        self.assertIn(
+            f"/archives/{self.archive_spring_id}/pages/{self.archive_spring_page_id}/image",
+            body,
+        )
+        self.assertIn('class="page-thumb"', body)
+
+    def test_archive_page_image_route_serves_page_file(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get(
+                f"/archives/{self.archive_spring_id}/pages/{self.archive_spring_page_id}/image"
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, self.page_bytes)
+        self.assertTrue(resp.headers["content-type"].startswith("image/jpeg"))
 
     def test_archive_not_found_returns_404(self):
         with TestClient(self.app) as client:

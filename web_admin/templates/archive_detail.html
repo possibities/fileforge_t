@@ -64,6 +64,7 @@
   <thead>
     <tr>
       <th>页码</th>
+      <th>预览</th>
       <th>图片名</th>
       <th>路径</th>
       <th>OCR 置信度</th>
@@ -74,8 +75,13 @@
     {% for page in archive.pages %}
     <tr>
       <td>{{ page.page_no }}</td>
+      <td>
+        <a class="page-thumb-link" href="/archives/{{ archive.id }}/pages/{{ page.id }}/image" target="_blank" rel="noopener">
+          <img class="page-thumb" src="/archives/{{ archive.id }}/pages/{{ page.id }}/image" alt="{{ page.image_name }}">
+        </a>
+      </td>
       <td>{{ page.image_name }}</td>
-      <td>{{ page.image_path }}</td>
+      <td class="path-cell">{{ page.image_path }}</td>
       <td>{{ page.ocr_avg_confidence or "" }}</td>
       <td>{{ page.ocr_variant or "" }}</td>
     </tr>

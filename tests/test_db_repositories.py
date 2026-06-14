@@ -21,6 +21,8 @@ try:
         ArchiveRecord,
         Base,
         ProcessingBatch,
+        ProcessingEvent,
+        ProcessingJob,
         Project,
     )
 except ImportError as _exc:  # pragma: no cover
@@ -275,6 +277,61 @@ class TestUpsertArchiveRerun(unittest.TestCase):
             self.assertEqual(archive.processing_status, "success")
             self.assertEqual(archive.correction_status, "corrected")
             self.assertEqual(archive.title, "人工修正题名")
+
+
+@unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
+class TestProcessingJobProgress(unittest.TestCase):
+    def setUp(self):
+        self.engine = _make_engine()
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
+        with self.Session() as session:
+            project = Project(project_key="p-progress")
+            session.add(project)
+            session.flush()
+            batch = ProcessingBatch(project_id=project.id, batch_key="b-progress")
+            session.add(batch)
+            session.flush()
+            self.project_id = project.id
+            self.batch_id = batch.id
+            session.commit()
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def test_update_job_progress_advances_stage_and_records_event(self):
+        with self.Session() as session:
+            job = repositories.record_job_start(
+                session,
+                batch_id=self.batch_id,
+                project_id=self.project_id,
+                document_key="doc-a",
+                page_count=2,
+            )
+            repositories.update_job_progress(
+                session,
+                job=job,
+                status="llm_running",
+                stage="llm",
+                progress=45,
+                message="开始 LLM 抽取",
+            )
+            session.commit()
+
+        with self.Session() as session:
+            job = session.scalar(select(ProcessingJob))
+            self.assertEqual(job.status, "llm_running")
+            self.assertEqual(job.current_stage, "llm")
+            self.assertEqual(job.progress, 45)
+            events = session.scalars(
+                select(ProcessingEvent)
+                .where(ProcessingEvent.job_id == job.id)
+                .order_by(ProcessingEvent.id.asc())
+            ).all()
+            self.assertEqual(events[-1].event_type, "stage_started")
+            self.assertEqual(events[-1].stage, "llm")
+            self.assertEqual(events[-1].payload["progress"], 45)
 
 
 @unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")

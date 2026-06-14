@@ -174,6 +174,31 @@ class BatchProcessor:
                     error_message="No image files were found in archive folder.",
                 )
             else:
+                missing_callback = object()
+                previous_callback = getattr(
+                    self.classifier,
+                    "progress_callback",
+                    missing_callback,
+                )
+                callback_installed = False
+                if self.recorder is not None and ctx is not None:
+                    def _record_progress(*, stage, status, progress, message=None):
+                        try:
+                            self.recorder.on_archive_stage(
+                                ctx,
+                                stage=stage,
+                                status=status,
+                                progress=progress,
+                                message=message,
+                            )
+                        except Exception as exc:  # pragma: no cover - defensive
+                            logger.exception("[Recorder] on_archive_stage 异常: %s", exc)
+
+                    try:
+                        setattr(self.classifier, "progress_callback", _record_progress)
+                        callback_installed = True
+                    except Exception as exc:  # pragma: no cover - defensive
+                        logger.debug("[Recorder] classifier progress callback 不可设置: %s", exc)
                 try:
                     metadata = self.classifier.process_multi_page_document(
                         archive_name,
@@ -205,6 +230,15 @@ class BatchProcessor:
                         error_message=str(exc),
                         traceback_text=traceback.format_exc(),
                     )
+                finally:
+                    if callback_installed:
+                        try:
+                            if previous_callback is missing_callback:
+                                delattr(self.classifier, "progress_callback")
+                            else:
+                                setattr(self.classifier, "progress_callback", previous_callback)
+                        except Exception as exc:  # pragma: no cover - defensive
+                            logger.debug("[Recorder] classifier progress callback 恢复失败: %s", exc)
 
             if result["status"] == self.STATUS_SUCCESS:
                 success_count += 1

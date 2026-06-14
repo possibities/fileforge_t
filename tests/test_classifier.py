@@ -124,6 +124,27 @@ class TestProcessMultiPageDocument(unittest.TestCase):
         # OCR text was forwarded to LLM
         self.assertEqual(llm.extract_calls[0][0], "some ocr text")
 
+    def test_emits_progress_for_ocr_llm_rules_and_export(self):
+        ocr = _FakeOcrClient(text="some ocr text")
+        llm = _FakeLlmClient(metadata={"题名": "测试题名", "保管期限": "10年"})
+        classifier = _make_classifier(ocr=ocr, llm=llm)
+        events = []
+        classifier.progress_callback = lambda **event: events.append(event)
+
+        with patch("core.classifier.get_file_creation_time", return_value="2026年4月"):
+            result = classifier.process_multi_page_document("ARCH_42", ["/tmp/p.jpg"])
+
+        self.assertEqual(result["题名"], "测试题名")
+        self.assertEqual(
+            [(event["stage"], event["status"], event["progress"]) for event in events],
+            [
+                ("ocr", "ocr_running", 10),
+                ("llm", "llm_running", 45),
+                ("rules", "rules_running", 75),
+                ("export", "exporting", 90),
+            ],
+        )
+
 
 class TestBriefingRewriteBranch(unittest.TestCase):
     """Covers the rule-11 → second-pass LLM hand-off in _extract_metadata_from_text."""

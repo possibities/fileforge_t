@@ -312,6 +312,35 @@ class BatchRecorder:
             self._state.db_error_count += 1
             logger.exception("[DB] on_archive_complete 失败 %s: %s", ctx.archive_key, exc)
 
+    def on_archive_stage(
+        self,
+        ctx: Optional[_ArchiveContext],
+        *,
+        stage: str,
+        status: str,
+        progress: int,
+        message: Optional[str] = None,
+    ) -> None:
+        if ctx is None:
+            return
+        try:
+            with self._session_factory() as session:
+                job = session.get(ProcessingJob, ctx.job_id)
+                if job is None:
+                    return
+                repositories.update_job_progress(
+                    session,
+                    job=job,
+                    status=status,
+                    stage=stage,
+                    progress=progress,
+                    message=message,
+                )
+                session.commit()
+        except Exception as exc:
+            self._state.db_error_count += 1
+            logger.exception("[DB] on_archive_stage 失败 %s: %s", ctx.archive_key, exc)
+
     def update_result_filename(self, ctx: Optional[_ArchiveContext], result_filename: str) -> None:
         if ctx is None:
             return
