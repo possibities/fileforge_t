@@ -181,6 +181,38 @@ class TestArchiveQueryRoutes(unittest.TestCase):
         self.assertIn("日常公文汇编", resp.text)
         self.assertNotIn("春风行动简报", resp.text)
 
+    def test_archive_list_ignores_blank_query_fields(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get(
+                f"/batches/{self.batch_a_id}/archives",
+                params={
+                    "archive_year": "",
+                    "classification_code": "",
+                    "retention_period": "",
+                    "processing_status": "",
+                    "openness_status": "",
+                    "review_status": "",
+                    "correction_status": "",
+                    "title_like": "",
+                    "responsible_party_like": "",
+                    "page": "",
+                    "page_size": "",
+                },
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("春风行动简报", resp.text)
+        self.assertIn("日常公文汇编", resp.text)
+
+    def test_archive_list_invalid_year_returns_400_not_422(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get(
+                f"/batches/{self.batch_a_id}/archives",
+                params={"archive_year": "not-a-year"},
+            )
+        self.assertEqual(resp.status_code, 400)
+
     def test_archive_list_filters_by_classification_retention_and_status(self):
         with TestClient(self.app) as client:
             self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)

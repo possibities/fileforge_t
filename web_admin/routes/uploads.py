@@ -41,6 +41,29 @@ router = APIRouter()
 BATCH_MANAGE_PERMISSION = "batch:manage"
 
 
+def _parse_optional_int_query(value: Optional[str], *, name: str) -> Optional[int]:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        return None
+    try:
+        return int(cleaned)
+    except ValueError as exc:
+        raise ValueError(f"{name}必须是整数") from exc
+
+
+def _parse_int_query(value: Optional[str], *, name: str, default: int) -> int:
+    parsed = _parse_optional_int_query(value, name=name)
+    return default if parsed is None else parsed
+
+
+def _bad_request(exc: ValueError) -> Response:
+    return Response(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=str(exc).encode("utf-8"),
+        media_type="text/plain; charset=utf-8",
+    )
+
+
 def _require_batch_manage(
     request: Request,
     session: Session,
@@ -101,26 +124,33 @@ def _render_uploads(
 @router.get("/uploads")
 def list_uploads(
     request: Request,
-    project_id: Optional[int] = None,
-    page: int = 1,
-    page_size: int = 50,
+    project_id: Optional[str] = None,
+    page: Optional[str] = None,
+    page_size: Optional[str] = None,
     session: Session = Depends(get_session),
 ) -> Response:
     current_user, error_response = _require_batch_manage(request, session)
     if error_response is not None:
         return error_response
-    if project_id is not None:
-        project = session.get(Project, project_id)
+    try:
+        project_id_num = _parse_optional_int_query(project_id, name="project_id")
+        page_num = _parse_int_query(page, name="page", default=1)
+        page_size_num = _parse_int_query(page_size, name="page_size", default=50)
+    except ValueError as exc:
+        return _bad_request(exc)
+
+    if project_id_num is not None:
+        project = session.get(Project, project_id_num)
         if project is None or not _can_access_project(current_user, project):
             return Response(status_code=status.HTTP_404_NOT_FOUND)
 
     org_id = None if has_platform_scope(current_user) else current_user.organization_id
     result = queries.list_upload_batches(
         session,
-        project_id=project_id,
+        project_id=project_id_num,
         organization_id=org_id,
-        page=page,
-        page_size=page_size,
+        page=page_num,
+        page_size=page_size_num,
     )
     return request.app.state.templates.TemplateResponse(
         request,
@@ -129,7 +159,7 @@ def list_uploads(
             "user": current_user,
             "result": result,
             "projects": _available_projects(session, current_user),
-            "selected_project_id": project_id,
+            "selected_project_id": project_id_num,
             "csrf_token": request.cookies.get("fileforge_csrf", ""),
             "error": None,
         },

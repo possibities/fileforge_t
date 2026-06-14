@@ -4,39 +4,76 @@
 <h1>档案查询</h1>
 <p>整理项目: {{ project.project_key }}；批次: {{ batch.batch_key }}</p>
 
-<form method="get" action="/batches/{{ batch.id }}/archives">
-  <label>
+<form class="filter-bar" method="get" action="/batches/{{ batch.id }}/archives">
+  <label for="archive_year">
     年度
-    <input type="number" name="archive_year" value="{{ filters.archive_year }}">
+    <input id="archive_year" type="number" name="archive_year" value="{{ filters.archive_year }}">
   </label>
-  <label>
+  <label for="classification_code">
     分类号
-    <input type="text" name="classification_code" value="{{ filters.classification_code[0] if filters.classification_code else '' }}">
+    <input id="classification_code" type="text" name="classification_code" value="{{ filters.classification_code[0] if filters.classification_code else '' }}">
   </label>
-  <label>
+  <label for="retention_period">
     保管期限
-    <input type="text" name="retention_period" value="{{ filters.retention_period[0] if filters.retention_period else '' }}">
+    <select id="retention_period" name="retention_period">
+      <option value="">全部</option>
+      {% for choice in retention_period_choices %}
+      <option value="{{ choice }}"{% if filters.retention_period and filters.retention_period[0] == choice %} selected{% endif %}>{{ choice }}</option>
+      {% endfor %}
+    </select>
   </label>
-  <label>
+  <label for="processing_status">
     处理状态
-    <input type="text" name="processing_status" value="{{ filters.processing_status[0] if filters.processing_status else '' }}">
+    <select id="processing_status" name="processing_status">
+      <option value="">全部</option>
+      {% for choice in processing_status_choices %}
+      <option value="{{ choice }}"{% if filters.processing_status and filters.processing_status[0] == choice %} selected{% endif %}>{{ choice }}</option>
+      {% endfor %}
+    </select>
   </label>
-  <label>
+  <label for="openness_status">
     开放状态
-    <input type="text" name="openness_status" value="{{ filters.openness_status }}">
+    <select id="openness_status" name="openness_status">
+      <option value="">全部</option>
+      {% for choice in openness_status_choices %}
+      <option value="{{ choice }}"{% if filters.openness_status == choice %} selected{% endif %}>{{ choice }}</option>
+      {% endfor %}
+    </select>
   </label>
-  <label>
+  <label for="review_status">
+    复核状态
+    <select id="review_status" name="review_status">
+      <option value="">全部</option>
+      {% for choice in review_status_choices %}
+      <option value="{{ choice }}"{% if filters.review_status and filters.review_status[0] == choice %} selected{% endif %}>{{ choice }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label for="correction_status">
+    修正状态
+    <select id="correction_status" name="correction_status">
+      <option value="">全部</option>
+      {% for choice in correction_status_choices %}
+      <option value="{{ choice }}"{% if filters.correction_status == choice %} selected{% endif %}>{{ choice }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label for="title_like">
     题名包含
-    <input type="text" name="title_like" value="{{ filters.title_like }}">
+    <input id="title_like" type="text" name="title_like" value="{{ filters.title_like }}">
   </label>
-  <label>
+  <label for="responsible_party_like">
     责任者包含
-    <input type="text" name="responsible_party_like" value="{{ filters.responsible_party_like }}">
+    <input id="responsible_party_like" type="text" name="responsible_party_like" value="{{ filters.responsible_party_like }}">
   </label>
   <button type="submit">查询</button>
+  <a class="button-link" href="/batches/{{ batch.id }}/archives">清空</a>
 </form>
 
-<p>共 {{ result.total }} 条，当前第 {{ result.page }} 页。</p>
+<div class="section-heading">
+  <h2>查询结果</h2>
+  <span class="muted">共 {{ result.total }} 条，当前第 {{ result.page }} 页</span>
+</div>
 <table>
   <thead>
     <tr>
@@ -49,6 +86,7 @@
       <th>责任者</th>
       <th>开放状态</th>
       <th>处理状态</th>
+      <th>复核</th>
       <th>页数</th>
       <th>操作</th>
     </tr>
@@ -65,15 +103,20 @@
       <td>{{ archive.responsible_party or "" }}</td>
       <td>{{ archive.openness_status or "" }}</td>
       <td><span class="status-badge status-{{ archive.processing_status }}">{{ archive.processing_status }}</span></td>
+      <td><span class="status-badge status-{{ archive.review_status }}">{{ archive.review_status }}</span></td>
       <td>{{ archive.page_count }}</td>
       <td><a href="/archives/{{ archive.id }}">详情</a></td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="12" class="empty-state">暂无匹配档案</td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
 
-{% if result.has_next %}
-<p><a href="/batches/{{ batch.id }}/archives?page={{ result.page + 1 }}&page_size={{ result.page_size }}">下一页</a></p>
+{% if next_page_url %}
+<p><a class="button-link" href="{{ next_page_url }}">下一页</a></p>
 {% endif %}
 <p><a href="/batches/{{ batch.id }}">返回批次详情</a></p>
 {% endblock %}

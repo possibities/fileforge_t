@@ -88,6 +88,17 @@ class TestUploadRoutes(unittest.TestCase):
         self.assertIn("webkitdirectory", resp.text)
         self.assertIn("data-dropzone", resp.text)
 
+    def test_upload_page_ignores_blank_filter_values(self):
+        with TestClient(self.app) as client:
+            self._login(client)
+            resp = client.get(
+                "/uploads",
+                params={"project_id": "", "page": "", "page_size": ""},
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("proj_a", resp.text)
+
 
 if __name__ == "__main__":
     unittest.main()

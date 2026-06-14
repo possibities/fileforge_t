@@ -143,6 +143,21 @@ class TestBatchQueryRoutes(unittest.TestCase):
         self.assertIn("proj_a", resp.text)
         self.assertNotIn("proj_b", resp.text)
 
+    def test_batches_page_ignores_blank_filter_values(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get(
+                "/batches",
+                params={
+                    "project_key": "proj_a",
+                    "status_filter": "",
+                    "page": "",
+                    "page_size": "",
+                },
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("batch_a", resp.text)
+
     def test_org_user_cannot_list_other_organization_batches(self):
         with TestClient(self.app) as client:
             self._login(client, OPERATOR_USERNAME, OPERATOR_PASSWORD)

@@ -8,7 +8,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from infrastructure.db import projects as projects_service, queries
-from infrastructure.db.models import ArchiveRecord, ProcessingBatch, Project
+from infrastructure.db.models import (
+    CORRECTION_STATUS,
+    PROCESSING_STATUS,
+    REVIEW_STATUS,
+    ArchiveRecord,
+    ProcessingBatch,
+    Project,
+)
 from infrastructure.db.repositories import (
     EDITABLE_FIELDS,
     RETENTION_PERIOD_CHOICES,
@@ -108,7 +115,32 @@ def _can_access_archive(
 
 
 def _as_list(values: Optional[list[str]]) -> list[str]:
-    return [value for value in (values or []) if value]
+    return [value.strip() for value in (values or []) if value and value.strip()]
+
+
+def _clean_optional_str(value: Optional[str]) -> Optional[str]:
+    cleaned = (value or "").strip()
+    return cleaned or None
+
+
+def _parse_optional_int_query(value: Optional[str], *, name: str) -> Optional[int]:
+    cleaned = _clean_optional_str(value)
+    if cleaned is None:
+        return None
+    try:
+        return int(cleaned)
+    except ValueError as exc:
+        raise ValueError(f"{name}必须是整数") from exc
+
+
+def _parse_int_query(value: Optional[str], *, name: str, default: int) -> int:
+    cleaned = _clean_optional_str(value)
+    if cleaned is None:
+        return default
+    try:
+        return int(cleaned)
+    except ValueError as exc:
+        raise ValueError(f"{name}必须是整数") from exc
 
 
 def _scoped_organization_id(current_user: CurrentUser) -> Optional[int]:
@@ -137,8 +169,8 @@ def list_batches(
     request: Request,
     project_key: Optional[str] = None,
     status_filter: Optional[list[str]] = Query(default=None),
-    page: int = 1,
-    page_size: int = 50,
+    page: Optional[str] = None,
+    page_size: Optional[str] = None,
     session: Session = Depends(get_session),
 ) -> Response:
     current_user, error_response = _require_archive_view(request, session)
@@ -148,6 +180,11 @@ def list_batches(
     templates = request.app.state.templates
     cleaned_project_key = (project_key or "").strip()
     statuses = _as_list(status_filter)
+    try:
+        page_num = _parse_int_query(page, name="page", default=1)
+        page_size_num = _parse_int_query(page_size, name="page_size", default=50)
+    except ValueError as exc:
+        return _bad_request(exc)
     context = {
         "user": current_user,
         "project_key": cleaned_project_key,
@@ -171,8 +208,8 @@ def list_batches(
             project_key=cleaned_project_key,
             status_filter=statuses,
             organization_id=_scoped_organization_id(current_user),
-            page=page,
-            page_size=page_size,
+            page=page_num,
+            page_size=page_size_num,
         )
     except ValueError as exc:
         return _bad_request(exc)
@@ -215,7 +252,7 @@ def get_batch_detail(
 def list_archives(
     request: Request,
     batch_id: int,
-    archive_year: Optional[int] = None,
+    archive_year: Optional[str] = None,
     classification_code: Optional[list[str]] = Query(default=None),
     retention_period: Optional[list[str]] = Query(default=None),
     openness_status: Optional[str] = None,
@@ -227,8 +264,8 @@ def list_archives(
     title_like: Optional[str] = None,
     responsible_party_like: Optional[str] = None,
     error_code: Optional[list[str]] = Query(default=None),
-    page: int = 1,
-    page_size: int = 50,
+    page: Optional[str] = None,
+    page_size: Optional[str] = None,
     session: Session = Depends(get_session),
 ) -> Response:
     current_user, error_response = _require_archive_view(request, session)
@@ -242,18 +279,25 @@ def list_archives(
     if project is None:
         return Response(status_code=status.HTTP_404_NOT_FOUND)
 
+    try:
+        archive_year_num = _parse_optional_int_query(archive_year, name="年度")
+        page_num = _parse_int_query(page, name="page", default=1)
+        page_size_num = _parse_int_query(page_size, name="page_size", default=50)
+    except ValueError as exc:
+        return _bad_request(exc)
+
     archive_filter = queries.ArchiveFilter(
-        archive_year=archive_year,
+        archive_year=archive_year_num,
         classification_code=_as_list(classification_code),
         retention_period=_as_list(retention_period),
-        openness_status=(openness_status or None),
+        openness_status=_clean_optional_str(openness_status),
         processing_status=_as_list(processing_status),
         review_status=_as_list(review_status),
-        correction_status=(correction_status or None),
-        archive_no=(archive_no or None),
-        item_no=(item_no or None),
-        title_like=(title_like or None),
-        responsible_party_like=(responsible_party_like or None),
+        correction_status=_clean_optional_str(correction_status),
+        archive_no=_clean_optional_str(archive_no),
+        item_no=_clean_optional_str(item_no),
+        title_like=_clean_optional_str(title_like),
+        responsible_party_like=_clean_optional_str(responsible_party_like),
         error_code=_as_list(error_code),
     )
     try:
@@ -262,8 +306,8 @@ def list_archives(
             batch_id=batch_id,
             filter=archive_filter,
             organization_id=_scoped_organization_id(current_user),
-            page=page,
-            page_size=page_size,
+            page=page_num,
+            page_size=page_size_num,
         )
     except ValueError as exc:
         return _bad_request(exc)
@@ -277,8 +321,21 @@ def list_archives(
             "project": project,
             "batch": batch,
             "result": result,
+            "next_page_url": (
+                request.url.include_query_params(
+                    page=result.page + 1,
+                    page_size=result.page_size,
+                )
+                if result.has_next
+                else None
+            ),
+            "processing_status_choices": list(PROCESSING_STATUS),
+            "review_status_choices": list(REVIEW_STATUS),
+            "correction_status_choices": list(CORRECTION_STATUS),
+            "openness_status_choices": ["开放", "控制"],
+            "retention_period_choices": list(RETENTION_PERIOD_CHOICES),
             "filters": {
-                "archive_year": archive_year or "",
+                "archive_year": _clean_optional_str(archive_year) or "",
                 "classification_code": _as_list(classification_code),
                 "retention_period": _as_list(retention_period),
                 "openness_status": openness_status or "",
@@ -336,8 +393,8 @@ def get_archive_detail(
 def list_archive_revisions(
     request: Request,
     archive_id: int,
-    page: int = 1,
-    page_size: int = 50,
+    page: Optional[str] = None,
+    page_size: Optional[str] = None,
     session: Session = Depends(get_session),
 ) -> Response:
     current_user, error_response = _require_archive_view(request, session)
@@ -353,11 +410,13 @@ def list_archive_revisions(
     batch, project = access
 
     try:
+        page_num = _parse_int_query(page, name="page", default=1)
+        page_size_num = _parse_int_query(page_size, name="page_size", default=50)
         result = queries.list_revisions(
             session,
             archive_id=archive_id,
-            page=page,
-            page_size=page_size,
+            page=page_num,
+            page_size=page_size_num,
         )
     except ValueError as exc:
         return _bad_request(exc)
@@ -380,8 +439,8 @@ def list_archive_revisions(
 def list_archive_audit_logs(
     request: Request,
     archive_id: int,
-    page: int = 1,
-    page_size: int = 50,
+    page: Optional[str] = None,
+    page_size: Optional[str] = None,
     session: Session = Depends(get_session),
 ) -> Response:
     current_user, error_response = _require_archive_view(request, session)
@@ -399,12 +458,14 @@ def list_archive_audit_logs(
     batch, project = access
 
     try:
+        page_num = _parse_int_query(page, name="page", default=1)
+        page_size_num = _parse_int_query(page_size, name="page_size", default=50)
         result = queries.list_audit_logs(
             session,
             target_type="archive",
             target_id=archive_id,
-            page=page,
-            page_size=page_size,
+            page=page_num,
+            page_size=page_size_num,
         )
     except ValueError as exc:
         return _bad_request(exc)

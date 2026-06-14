@@ -26,6 +26,16 @@ PROJECT_MANAGE_PERMISSION = "project:manage"
 PROJECT_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_\-]+$")
 
 
+def _parse_optional_int_query(value: Optional[str], *, name: str) -> Optional[int]:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        return None
+    try:
+        return int(cleaned)
+    except ValueError as exc:
+        raise ValueError(f"{name}必须是整数") from exc
+
+
 def _require_project_manage(
     request: Request,
     session: Session,
@@ -85,7 +95,7 @@ def _render_new_form(
 @router.get("")
 def list_projects_route(
     request: Request,
-    organization_id: Optional[int] = None,
+    organization_id: Optional[str] = None,
     session: Session = Depends(get_session),
 ) -> Response:
     current_user, error_response = _require_project_manage(request, session)
@@ -93,7 +103,17 @@ def list_projects_route(
         return error_response
 
     if has_platform_scope(current_user):
-        effective_org_id = organization_id
+        try:
+            effective_org_id = _parse_optional_int_query(
+                organization_id,
+                name="organization_id",
+            )
+        except ValueError as exc:
+            return Response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=str(exc).encode("utf-8"),
+                media_type="text/plain; charset=utf-8",
+            )
         orgs_for_filter = accounts.list_organizations(session, status_filter=("active",))
         show_org_filter = True
     else:

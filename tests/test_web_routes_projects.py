@@ -164,6 +164,14 @@ class TestProjectRoutes(unittest.TestCase):
         self.assertIn("proj_a", resp.text)
         self.assertNotIn("proj_b", resp.text)
 
+    def test_get_list_blank_organization_id_is_treated_as_all(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get("/admin/projects", params={"organization_id": ""})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("proj_a", resp.text)
+        self.assertIn("proj_b", resp.text)
+
     def test_get_new_form_platform_admin_lists_all_active_orgs(self):
         with TestClient(self.app) as client:
             self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
