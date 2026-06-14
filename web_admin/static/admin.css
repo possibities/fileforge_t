@@ -108,6 +108,11 @@ a:hover {
   text-decoration: none;
 }
 
+.nav a.active {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
 .identity {
   display: grid;
   gap: 1px;
@@ -257,6 +262,13 @@ button:hover {
   background: var(--accent-dark);
 }
 
+button:disabled {
+  border-color: var(--line-strong);
+  background: #eef2f5;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
 button.secondary,
 .button-link {
   border: 1px solid var(--line-strong);
@@ -279,6 +291,10 @@ button.secondary:hover,
   padding: 7px 13px;
 }
 
+.page-header .button-link {
+  margin-bottom: 0;
+}
+
 .inline-form {
   margin-top: 4px;
 }
@@ -291,8 +307,38 @@ button.secondary:hover,
 }
 
 .stacked-form input,
+.stacked-form select,
+.stacked-form textarea,
 .stacked-form button {
   width: 100%;
+}
+
+.filter-bar {
+  align-items: end;
+  margin: 0 0 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.filter-bar label {
+  min-width: 220px;
+}
+
+.form-panel {
+  max-width: 720px;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.form-actions .button-link {
+  margin: 0;
 }
 
 .upload-form {
@@ -353,6 +399,33 @@ tbody tr:hover {
 
 td form {
   margin: 0;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 150px;
+}
+
+.table-actions button {
+  min-height: 30px;
+  padding: 4px 9px;
+  font-size: 12px;
+}
+
+.code-pill {
+  display: inline-flex;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 7px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 fieldset {

@@ -21,7 +21,7 @@
       选择整理项目
       <select id="project_id" name="project_id" required>
         {% for project in projects %}
-        <option value="{{ project.id }}">{{ project.project_key }}{% if project.project_name %} - {{ project.project_name }}{% endif %}</option>
+        <option value="{{ project.id }}"{% if selected_project_id == project.id %} selected{% endif %}>{{ project.project_name or project.project_key }}{% if project.project_name %} ({{ project.project_key }}){% endif %}</option>
         {% endfor %}
       </select>
     </label>
@@ -36,7 +36,9 @@
     <button type="submit">上传</button>
   </form>
   {% else %}
-  <p class="empty-state">暂无可用整理项目</p>
+  <p class="empty-state">
+    暂无可用整理项目{% if "project:manage" in user.permissions %}，可先<a href="/admin/projects/new">新建整理项目</a>{% endif %}。
+  </p>
   {% endif %}
 </section>
 
@@ -67,7 +69,7 @@
       <td>{{ upload.document_count }}</td>
       <td class="path-cell">{{ upload.storage_root }}</td>
       <td>{{ upload.created_at }}</td>
-      <td>
+      <td class="table-actions">
         {% if upload.status in ["uploaded", "validated", "failed"] %}
         <form method="post" action="/uploads/{{ upload.id }}/start" style="display:inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -88,4 +90,9 @@
     {% endfor %}
   </tbody>
 </table>
+{% if result.has_next %}
+<p>
+  <a class="button-link" href="/uploads?{% if selected_project_id %}project_id={{ selected_project_id }}&{% endif %}page={{ result.page + 1 }}&page_size={{ result.page_size }}">下一页</a>
+</p>
+{% endif %}
 {% endblock %}

@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from infrastructure.db import queries
+from infrastructure.db import projects as projects_service, queries
 from infrastructure.db.models import ArchiveRecord, ProcessingBatch, Project
 from infrastructure.db.repositories import (
     EDITABLE_FIELDS,
@@ -117,6 +117,13 @@ def _scoped_organization_id(current_user: CurrentUser) -> Optional[int]:
     return current_user.organization_id
 
 
+def _available_projects(session: Session, current_user: CurrentUser):
+    return projects_service.list_projects(
+        session,
+        organization_id=_scoped_organization_id(current_user),
+    )
+
+
 def _bad_request(exc: ValueError) -> Response:
     return Response(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -144,6 +151,7 @@ def list_batches(
     context = {
         "user": current_user,
         "project_key": cleaned_project_key,
+        "projects": _available_projects(session, current_user),
         "status_filter": statuses,
         "selected_status": statuses[0] if statuses else "",
         "result": None,

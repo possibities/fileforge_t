@@ -135,6 +135,14 @@ class TestBatchQueryRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn("batch_a", resp.text)
 
+    def test_batches_page_lists_accessible_projects(self):
+        with TestClient(self.app) as client:
+            self._login(client, OPERATOR_USERNAME, OPERATOR_PASSWORD)
+            resp = client.get("/batches")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("proj_a", resp.text)
+        self.assertNotIn("proj_b", resp.text)
+
     def test_org_user_cannot_list_other_organization_batches(self):
         with TestClient(self.app) as client:
             self._login(client, OPERATOR_USERNAME, OPERATOR_PASSWORD)

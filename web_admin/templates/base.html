@@ -14,19 +14,25 @@
       <span>FileForge</span>
     </a>
     {% if user is defined and user %}
+    {% set current_path = request.url.path %}
     <nav class="nav">
-      <a href="/batches">批次</a>
+      {% set batches_active = current_path.startswith('/batches') or current_path.startswith('/archives') or current_path.startswith('/processing/batches') %}
+      <a href="/batches" class="{% if batches_active %}active{% endif %}"{% if batches_active %} aria-current="page"{% endif %}>批次</a>
       {% if "batch:manage" in user.permissions %}
-      <a href="/uploads">上传</a>
+      {% set uploads_active = current_path.startswith('/uploads') %}
+      <a href="/uploads" class="{% if uploads_active %}active{% endif %}"{% if uploads_active %} aria-current="page"{% endif %}>上传</a>
       {% endif %}
       {% if "user:manage" in user.permissions %}
-      <a href="/admin/users">用户</a>
+      {% set users_active = current_path.startswith('/admin/users') %}
+      <a href="/admin/users" class="{% if users_active %}active{% endif %}"{% if users_active %} aria-current="page"{% endif %}>用户</a>
       {% endif %}
       {% if "organization:manage" in user.permissions %}
-      <a href="/admin/organizations">单位</a>
+      {% set orgs_active = current_path.startswith('/admin/organizations') %}
+      <a href="/admin/organizations" class="{% if orgs_active %}active{% endif %}"{% if orgs_active %} aria-current="page"{% endif %}>单位</a>
       {% endif %}
       {% if "project:manage" in user.permissions %}
-      <a href="/admin/projects">整理项目</a>
+      {% set projects_active = current_path.startswith('/admin/projects') %}
+      <a href="/admin/projects" class="{% if projects_active %}active{% endif %}"{% if projects_active %} aria-current="page"{% endif %}>整理项目</a>
       {% endif %}
     </nav>
     <div class="identity">

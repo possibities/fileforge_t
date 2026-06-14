@@ -1,30 +1,53 @@
 {% extends "base.html" %}
 {% block title %}批次查询 - FileForge 管理后台{% endblock %}
 {% block content %}
-<h1>批次查询</h1>
-<form method="get" action="/batches">
-  <label>
-    项目标识
-    <input type="text" name="project_key" value="{{ project_key or '' }}" required>
+<div class="page-header">
+  <div>
+    <p class="eyebrow">Batch Query</p>
+    <h1>批次查询</h1>
+  </div>
+  {% if "batch:manage" in user.permissions %}
+  <a class="button-link" href="/uploads">新建上传</a>
+  {% endif %}
+</div>
+
+<form class="filter-bar" method="get" action="/batches">
+  <label for="project_key">
+    整理项目
+    <select id="project_key" name="project_key" required{% if not projects %} disabled{% endif %}>
+      <option value="">请选择整理项目</option>
+      {% for project in projects %}
+      <option value="{{ project.project_key }}"{% if project_key == project.project_key %} selected{% endif %}>{{ project.project_name or project.project_key }}{% if project.project_name %} ({{ project.project_key }}){% endif %}{% if project.status != "active" %} - {{ project.status }}{% endif %}</option>
+      {% endfor %}
+    </select>
   </label>
-  <label>
+  <label for="status_filter">
     状态
-    <select name="status_filter">
+    <select id="status_filter" name="status_filter">
       <option value="">全部</option>
       {% for status_code in ["queued", "running", "success", "partial_failed", "failed", "cancelled", "completed", "aborted"] %}
       <option value="{{ status_code }}"{% if selected_status == status_code %} selected{% endif %}>{{ status_code }}</option>
       {% endfor %}
     </select>
   </label>
-  <button type="submit">查询</button>
+  <button type="submit"{% if not projects %} disabled{% endif %}>查询</button>
 </form>
 
 {% if error %}
 <p role="alert">{{ error }}</p>
 {% endif %}
 
+{% if not projects %}
+<p class="empty-state">
+  暂无可查询整理项目{% if "project:manage" in user.permissions %}，可先<a href="/admin/projects/new">新建整理项目</a>{% endif %}。
+</p>
+{% endif %}
+
 {% if result %}
-<p>共 {{ result.total }} 条，当前第 {{ result.page }} 页。</p>
+<div class="section-heading">
+  <h2>批次记录</h2>
+  <span class="muted">共 {{ result.total }} 条，当前第 {{ result.page }} 页</span>
+</div>
 <table>
   <thead>
     <tr>
@@ -43,7 +66,7 @@
   <tbody>
     {% for batch in result.items %}
     <tr>
-      <td>{{ batch.batch_key }}</td>
+      <td><code class="code-pill">{{ batch.batch_key }}</code></td>
       <td>{{ batch.batch_name or "" }}</td>
       <td><span class="status-badge status-{{ batch.batch_status }}">{{ batch.batch_status }}</span></td>
       <td>{{ batch.total_archives }}</td>
@@ -52,18 +75,22 @@
       <td>{{ batch.fail_count }}</td>
       <td>{{ batch.started_at or "" }}</td>
       <td>{{ batch.finished_at or "" }}</td>
-      <td>
+      <td class="table-actions">
         <a href="/batches/{{ batch.id }}">详情</a>
         {% if batch.trigger_type == "web_upload" %}
         <a href="/processing/batches/{{ batch.id }}">进度</a>
         {% endif %}
       </td>
     </tr>
+    {% else %}
+    <tr>
+      <td colspan="10" class="empty-state">暂无批次记录</td>
+    </tr>
     {% endfor %}
   </tbody>
 </table>
 {% if result.has_next %}
-<p><a href="/batches?project_key={{ project_key }}{% if selected_status %}&status_filter={{ selected_status }}{% endif %}&page={{ result.page + 1 }}&page_size={{ result.page_size }}">下一页</a></p>
+<p><a class="button-link" href="/batches?project_key={{ project_key }}{% if selected_status %}&status_filter={{ selected_status }}{% endif %}&page={{ result.page + 1 }}&page_size={{ result.page_size }}">下一页</a></p>
 {% endif %}
 {% endif %}
 <p><a href="/">返回主页</a></p>

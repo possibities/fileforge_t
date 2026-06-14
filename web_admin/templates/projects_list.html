@@ -1,12 +1,16 @@
 {% extends "base.html" %}
 {% block title %}整理项目 - FileForge 管理后台{% endblock %}
 {% block content %}
-<h1>整理项目</h1>
-
-<p><a class="button-link" href="/admin/projects/new">新建整理项目</a></p>
+<div class="page-header">
+  <div>
+    <p class="eyebrow">Projects</p>
+    <h1>整理项目</h1>
+  </div>
+  <a class="button-link" href="/admin/projects/new">新建整理项目</a>
+</div>
 
 {% if show_org_filter %}
-<form method="get" action="/admin/projects">
+<form class="filter-bar" method="get" action="/admin/projects">
   <label for="organization_id">按单位过滤</label>
   <select id="organization_id" name="organization_id" onchange="this.form.submit()">
     <option value="">全部</option>
@@ -33,16 +37,20 @@
     {% for project in projects %}
     <tr>
       <td>{{ project.id }}</td>
-      <td>{{ project.project_key }}</td>
+      <td><code class="code-pill">{{ project.project_key }}</code></td>
       <td>{{ project.project_name or "" }}</td>
       <td>{{ project.organization_name or "" }}</td>
       <td><span class="status-badge status-{{ project.status }}">{{ project.status }}</span></td>
       <td>{{ project.created_at }}</td>
-      <td>
+      <td class="table-actions">
+        {% if "batch:manage" in user.permissions and project.status == "active" %}
+        <a href="/uploads?project_id={{ project.id }}">上传</a>
+        {% endif %}
+        <a href="/batches?project_key={{ project.project_key }}">批次</a>
         {% if project.status == "active" %}
         <form method="post" action="/admin/projects/{{ project.id }}/disable" style="display:inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button type="submit">禁用</button>
+          <button class="secondary" type="submit">禁用</button>
         </form>
         {% else %}
         <form method="post" action="/admin/projects/{{ project.id }}/enable" style="display:inline">
@@ -51,6 +59,10 @@
         </form>
         {% endif %}
       </td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="7" class="empty-state">暂无整理项目</td>
     </tr>
     {% endfor %}
   </tbody>

@@ -74,10 +74,15 @@ def _render_uploads(
     current_user: CurrentUser,
     session: Session,
     error: Optional[str] = None,
+    selected_project_id: Optional[int] = None,
     status_code: int = status.HTTP_200_OK,
 ) -> Response:
     org_id = None if has_platform_scope(current_user) else current_user.organization_id
-    result = queries.list_upload_batches(session, organization_id=org_id)
+    result = queries.list_upload_batches(
+        session,
+        project_id=selected_project_id,
+        organization_id=org_id,
+    )
     return request.app.state.templates.TemplateResponse(
         request,
         "uploads_list.html",
@@ -85,6 +90,7 @@ def _render_uploads(
             "user": current_user,
             "result": result,
             "projects": _available_projects(session, current_user),
+            "selected_project_id": selected_project_id,
             "csrf_token": request.cookies.get("fileforge_csrf", ""),
             "error": error,
         },
@@ -95,6 +101,7 @@ def _render_uploads(
 @router.get("/uploads")
 def list_uploads(
     request: Request,
+    project_id: Optional[int] = None,
     page: int = 1,
     page_size: int = 50,
     session: Session = Depends(get_session),
@@ -102,9 +109,15 @@ def list_uploads(
     current_user, error_response = _require_batch_manage(request, session)
     if error_response is not None:
         return error_response
+    if project_id is not None:
+        project = session.get(Project, project_id)
+        if project is None or not _can_access_project(current_user, project):
+            return Response(status_code=status.HTTP_404_NOT_FOUND)
+
     org_id = None if has_platform_scope(current_user) else current_user.organization_id
     result = queries.list_upload_batches(
         session,
+        project_id=project_id,
         organization_id=org_id,
         page=page,
         page_size=page_size,
@@ -116,6 +129,7 @@ def list_uploads(
             "user": current_user,
             "result": result,
             "projects": _available_projects(session, current_user),
+            "selected_project_id": project_id,
             "csrf_token": request.cookies.get("fileforge_csrf", ""),
             "error": None,
         },
@@ -191,6 +205,7 @@ def create_upload(
             current_user=current_user,
             session=session,
             error=str(exc),
+            selected_project_id=project.id,
         )
 
     return RedirectResponse(url="/uploads", status_code=status.HTTP_303_SEE_OTHER)
