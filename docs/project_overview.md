@@ -391,7 +391,7 @@ organizations  ──┐
 | `/admin/organizations/new` | 新建单位 | `organization:manage` |
 | `/admin/organizations/{id}/disable\|enable` | 启用/禁用单位 | `organization:manage` |
 | `/admin/projects` | 项目列表(可按单位过滤) | `project:manage` |
-| `/admin/projects/new` | 新建项目(`org_admin` 锁本单位) | `project:manage` |
+| `/admin/projects/new` | 新建项目(`org_admin` 锁本单位,项目标识自动生成) | `project:manage` |
 | `/admin/projects/{id}/disable\|enable` | 启用/禁用项目 | `project:manage` |
 | `/uploads` | 上传图片/zip,查看上传记录 | `batch:manage` |
 | `/uploads/{id}/start` | 启动上传批次的在线处理 | `batch:manage` |

@@ -10,8 +10,7 @@
 <form method="post" action="/admin/projects/new">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <p>
-    <label for="project_key">项目标识(必填,1–128 字符,字母数字/-/_,唯一)</label><br>
-    <input type="text" id="project_key" name="project_key" value="{{ values.project_key or '' }}" maxlength="128" pattern="[A-Za-z0-9_\-]+" required>
+    项目标识由系统自动生成。
   </p>
   <p>
     <label for="project_name">整理项目名称(可空,≤255 字符)</label><br>

@@ -178,11 +178,9 @@ def post_new_project(
     }
 
     error: Optional[str] = None
-    if not clean_key:
-        error = "项目标识不能为空"
-    elif len(clean_key) > 128:
+    if clean_key and len(clean_key) > 128:
         error = "项目标识长度不能超过 128 字符"
-    elif not PROJECT_KEY_PATTERN.match(clean_key):
+    elif clean_key and not PROJECT_KEY_PATTERN.match(clean_key):
         error = "项目标识只能包含字母 数字 - _"
     elif len(clean_name) > 255:
         error = "整理项目名称长度不能超过 255 字符"

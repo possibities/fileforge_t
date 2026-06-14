@@ -228,7 +228,7 @@ python -m utils.processing_runner --upload-batch-id 1
 - `/admin/organizations/new`: 新建单位。
 - `/admin/organizations/{organization_id}/disable` 与 `/enable`: 切单位 status。
 - `/admin/projects`: 项目列表。
-- `/admin/projects/new`: 新建项目。
+- `/admin/projects/new`: 新建项目；项目唯一标识由系统自动生成。
 - `/admin/projects/{project_id}/disable` 与 `/enable`: 切项目 status。
 - `/batches`: 按 `project_key` 查询批次。
 - `/batches/{batch_id}`: 批次详情。

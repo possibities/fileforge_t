@@ -112,7 +112,6 @@ class TestProjectRoutes(unittest.TestCase):
 
     def _post_new(self, client, csrf, **fields):
         form = {
-            "project_key": "new_proj",
             "project_name": "新项目",
             "description": "",
             "organization_id": str(self.org_a_id),
@@ -196,10 +195,11 @@ class TestProjectRoutes(unittest.TestCase):
         self.assertEqual(resp.headers["location"], "/admin/projects")
         with self.Session() as session:
             rows = session.scalars(
-                select(Project).where(Project.project_key == "new_proj")
+                select(Project).where(Project.project_name == "新项目")
             ).all()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].status, "active")
+        self.assertRegex(rows[0].project_key, r"^prj_\d{8}_[0-9a-f]{8}$")
 
     def test_post_new_org_admin_other_org_id_silently_locked(self):
         with TestClient(self.app) as client:
@@ -233,15 +233,15 @@ class TestProjectRoutes(unittest.TestCase):
                 client, csrf=self._csrf(client), project_key="bad key!",
             )
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("project_key", resp.text)
+        self.assertIn("项目标识", resp.text)
 
-    def test_post_new_blank_project_key_re_renders_with_error(self):
+    def test_post_new_blank_project_key_generates_key(self):
         with TestClient(self.app) as client:
             self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
             resp = self._post_new(
                 client, csrf=self._csrf(client), project_key="   ",
             )
-        self.assertEqual(resp.status_code, 200)
+        self.assertIn(resp.status_code, {302, 303})
 
     def test_post_new_disabled_org_re_renders_with_error(self):
         with TestClient(self.app) as client:

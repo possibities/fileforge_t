@@ -66,6 +66,17 @@ class TestProjectManagement(unittest.TestCase):
             self.assertEqual(project.project_name, "档案甲项目")
             self.assertEqual(project.description, "测试项目")
 
+    def test_create_project_generates_key_when_blank(self):
+        with self.Session() as session:
+            project = projects.create_project(
+                session,
+                project_key=" ",
+                organization_id=self.org_a_id,
+                project_name="自动标识项目",
+            )
+            session.commit()
+            self.assertRegex(project.project_key, r"^prj_\d{8}_[0-9a-f]{8}$")
+
     def test_create_project_duplicate_key_raises(self):
         with self.Session() as session:
             projects.create_project(
@@ -93,13 +104,6 @@ class TestProjectManagement(unittest.TestCase):
                     session, project_key="proj_x", organization_id=self.org_b_id,
                 )
             self.assertIn("disabled", str(ctx.exception).lower())
-
-    def test_create_project_blank_key_raises(self):
-        with self.Session() as session:
-            with self.assertRaises(ValueError):
-                projects.create_project(
-                    session, project_key="   ", organization_id=self.org_a_id,
-                )
 
     def _seed_three_projects(self):
         with self.Session() as session:
