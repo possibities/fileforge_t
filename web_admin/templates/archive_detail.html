@@ -1,107 +1,110 @@
 {% extends "base.html" %}
 {% block title %}档案详情 - FileForge 管理后台{% endblock %}
 {% block content %}
-<h1>档案详情</h1>
-<p>整理项目: {{ project.project_key }}；批次: {{ batch.batch_key }}</p>
-
-<dl>
-  <dt>档案 Key</dt>
-  <dd>{{ archive.archive_key }}</dd>
-  <dt>档案名称</dt>
-  <dd>{{ archive.archive_name }}</dd>
-  <dt>题名</dt>
-  <dd>{{ archive.title or "" }}</dd>
-  <dt>档号 / 件号</dt>
-  <dd>{{ archive.archive_no or "" }} / {{ archive.item_no or "" }}</dd>
-  <dt>年度</dt>
-  <dd>{{ archive.archive_year or "" }}</dd>
-  <dt>分类</dt>
-  <dd>{{ archive.classification_code or "" }} {{ archive.classification_name or "" }}</dd>
-  <dt>保管期限</dt>
-  <dd>{{ archive.retention_period or "" }} {{ archive.retention_period_code or "" }}</dd>
-  <dt>责任者</dt>
-  <dd>{{ archive.responsible_party or "" }}</dd>
-  <dt>文件日期</dt>
-  <dd>{{ archive.document_date or "" }}</dd>
-  <dt>开放状态</dt>
-  <dd>{{ archive.openness_status or "" }}</dd>
-  <dt>处理状态</dt>
-  <dd><span class="status-badge status-{{ archive.processing_status }}">{{ archive.processing_status }}</span></dd>
-  <dt>审核状态</dt>
-  <dd><span class="status-badge status-{{ archive.review_status }}">{{ archive.review_status }}</span></dd>
-  <dt>修正状态</dt>
-  <dd><span class="status-badge status-{{ archive.correction_status }}">{{ archive.correction_status }}</span></dd>
-  <dt>解析策略</dt>
-  <dd>{{ archive.llm_parse_strategy or "" }}</dd>
-  <dt>错误</dt>
-  <dd>{{ archive.error_code or "" }} {{ archive.error_message or "" }}</dd>
-</dl>
-
-<h2>最终 Metadata</h2>
-{% if archive.final_metadata %}
-<table>
-  <thead>
-    <tr>
-      <th>字段</th>
-      <th>值</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for key, value in archive.final_metadata.items() %}
-    <tr>
-      <td>{{ key }}</td>
-      <td>{{ value }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<p>无 metadata。</p>
-{% endif %}
-
-<h2>页面</h2>
-<table>
-  <thead>
-    <tr>
-      <th>页码</th>
-      <th>预览</th>
-      <th>图片名</th>
-      <th>路径</th>
-      <th>OCR 置信度</th>
-      <th>OCR 变体</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for page in archive.pages %}
-    <tr>
-      <td>{{ page.page_no }}</td>
-      <td>
-        <a class="page-thumb-link" href="/archives/{{ archive.id }}/pages/{{ page.id }}/image" target="_blank" rel="noopener">
-          <img class="page-thumb" src="/archives/{{ archive.id }}/pages/{{ page.id }}/image" alt="{{ page.image_name }}">
-        </a>
-      </td>
-      <td>{{ page.image_name }}</td>
-      <td class="path-cell">{{ page.image_path }}</td>
-      <td>{{ page.ocr_avg_confidence or "" }}</td>
-      <td>{{ page.ocr_variant or "" }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-
-<p><a href="/batches/{{ batch.id }}/archives">返回档案列表</a></p>
+<div class="page-header">
+  <div>
+    <h1>档案详情</h1>
+    <p class="muted">整理项目: {{ project.project_key }}；批次: {{ batch.batch_key }}</p>
+  </div>
+  <div class="table-actions">
+    <a class="button-link" href="/batches/{{ batch.id }}/archives">返回列表</a>
+    <a class="button-link" href="/archives/{{ archive.id }}/revisions">修订记录</a>
+    {% if "audit:view" in user.permissions %}
+    <a class="button-link" href="/archives/{{ archive.id }}/audit">审计记录</a>
+    {% endif %}
+    {% if "archive:correct" in user.permissions %}
+    <a class="button-link" href="/archives/{{ archive.id }}/edit">修正</a>
+    {% endif %}
+  </div>
+</div>
 
 {% if notice == "no_change" %}
 <p class="notice">无字段变化,未生成新修订。</p>
 {% endif %}
 
-<p>
-  <a href="/archives/{{ archive.id }}/revisions">修订记录</a>
-  {% if "audit:view" in user.permissions %}
-  <a href="/archives/{{ archive.id }}/audit">审计记录</a>
-  {% endif %}
-  {% if "archive:correct" in user.permissions %}
-  <a href="/archives/{{ archive.id }}/edit">修正</a>
-  {% endif %}
-</p>
+<div class="archive-detail-layout">
+  <main class="archive-detail-main">
+    <h2>档案信息</h2>
+    <dl class="archive-detail-list">
+      <dt>档案 Key</dt>
+      <dd>{{ archive.archive_key }}</dd>
+      <dt>档案名称</dt>
+      <dd>{{ archive.archive_name }}</dd>
+      <dt>题名</dt>
+      <dd>{{ archive.title or "" }}</dd>
+      <dt>档号 / 件号</dt>
+      <dd>{{ archive.archive_no or "" }} / {{ archive.item_no or "" }}</dd>
+      <dt>年度</dt>
+      <dd>{{ archive.archive_year or "" }}</dd>
+      <dt>分类</dt>
+      <dd>{{ archive.classification_code or "" }} {{ archive.classification_name or "" }}</dd>
+      <dt>保管期限</dt>
+      <dd>{{ archive.retention_period or "" }} {{ archive.retention_period_code or "" }}</dd>
+      <dt>责任者</dt>
+      <dd>{{ archive.responsible_party or "" }}</dd>
+      <dt>文件日期</dt>
+      <dd>{{ archive.document_date or "" }}</dd>
+      <dt>开放状态</dt>
+      <dd>{{ archive.openness_status or "" }}</dd>
+      <dt>处理状态</dt>
+      <dd><span class="status-badge status-{{ archive.processing_status }}">{{ archive.processing_status }}</span></dd>
+      <dt>审核状态</dt>
+      <dd><span class="status-badge status-{{ archive.review_status }}">{{ archive.review_status }}</span></dd>
+      <dt>修正状态</dt>
+      <dd><span class="status-badge status-{{ archive.correction_status }}">{{ archive.correction_status }}</span></dd>
+      <dt>解析策略</dt>
+      <dd>{{ archive.llm_parse_strategy or "" }}</dd>
+      <dt>错误</dt>
+      <dd>{{ archive.error_code or "" }} {{ archive.error_message or "" }}</dd>
+    </dl>
+
+    <h2>最终 Metadata</h2>
+    {% if archive.final_metadata %}
+    <table>
+      <thead>
+        <tr>
+          <th>字段</th>
+          <th>值</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for key, value in archive.final_metadata.items() %}
+        <tr>
+          <td>{{ key }}</td>
+          <td>{{ value }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>无 metadata。</p>
+    {% endif %}
+  </main>
+
+  <aside class="archive-preview-panel" aria-label="页面预览">
+    <div class="section-heading">
+      <h2>页面预览</h2>
+      <span class="muted">{{ archive.pages|length }} 页</span>
+    </div>
+    <div class="page-preview-list">
+      {% for page in archive.pages %}
+      <article class="page-preview-item">
+        <a class="page-thumb-link" href="/archives/{{ archive.id }}/pages/{{ page.id }}/image" target="_blank" rel="noopener">
+          <img class="page-thumb" src="/archives/{{ archive.id }}/pages/{{ page.id }}/image" alt="{{ page.image_name }}" loading="lazy">
+        </a>
+        <div class="page-preview-meta">
+          <strong>第 {{ page.page_no }} 页</strong>
+          <span>{{ page.image_name }}</span>
+          <span class="path-cell">{{ page.image_path }}</span>
+          {% if page.ocr_avg_confidence or page.ocr_variant %}
+          <span class="muted">OCR {{ page.ocr_avg_confidence or "" }} {{ page.ocr_variant or "" }}</span>
+          {% endif %}
+        </div>
+      </article>
+      {% else %}
+      <p class="empty-state">暂无页面</p>
+      {% endfor %}
+    </div>
+  </aside>
+</div>
 {% endblock %}
