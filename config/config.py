@@ -101,5 +101,5 @@ class Config:
     PROJECT_KEY: str = _env_str("PROJECT_KEY", "")
     PROJECT_NAME: str = _env_str("PROJECT_NAME", "")
     BATCH_KEY: str = _env_str("BATCH_KEY", "")
-    # skip-success / rerun-failed-only / rerun-all / force-renumber
+    # skip-success / rerun-failed-only / rerun-all
     DB_RERUN_POLICY: str = _env_str("DB_RERUN_POLICY", "skip-success")
