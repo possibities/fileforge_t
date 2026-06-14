@@ -100,6 +100,54 @@ class TestUploadStorage(unittest.TestCase):
             rows = session.scalars(select(UploadedFile)).all()
             self.assertEqual({row.document_key for row in rows}, {"demo document"})
 
+    def test_folder_upload_groups_by_document_folder(self):
+        with tempfile.TemporaryDirectory() as tmpdir, self.Session() as session:
+            upload = self._create_upload_batch(session)
+            result = ingest_upload_files(
+                session,
+                upload_batch_id=upload.id,
+                upload_root=Path(tmpdir),
+                upload_name="ignored",
+                files=[
+                    _fake_upload("archive_a/001.jpg", b"a"),
+                    _fake_upload("archive_a/002.jpg", b"bb"),
+                    _fake_upload("archive_b/001.png", b"ccc", "image/png"),
+                ],
+                max_total_bytes=100,
+                max_file_count=10,
+            )
+
+            self.assertEqual(result.file_count, 3)
+            self.assertEqual(result.document_count, 2)
+            rows = session.scalars(select(UploadedFile)).all()
+            self.assertEqual({row.document_key for row in rows}, {"archive_a", "archive_b"})
+            self.assertEqual(
+                {(row.document_key, row.page_no) for row in rows},
+                {("archive_a", 1), ("archive_a", 2), ("archive_b", 1)},
+            )
+
+    def test_folder_upload_uses_child_folder_when_root_wraps_documents(self):
+        with tempfile.TemporaryDirectory() as tmpdir, self.Session() as session:
+            upload = self._create_upload_batch(session)
+            result = ingest_upload_files(
+                session,
+                upload_batch_id=upload.id,
+                upload_root=Path(tmpdir),
+                upload_name="ignored",
+                files=[
+                    _fake_upload("demo_upload/archive_a/001.jpg", b"a"),
+                    _fake_upload("demo_upload/archive_b/001.jpg", b"bb"),
+                    _fake_upload("../escape.jpg", b"bad"),
+                ],
+                max_total_bytes=100,
+                max_file_count=10,
+            )
+
+            self.assertEqual(result.file_count, 2)
+            self.assertEqual(result.document_count, 2)
+            rows = session.scalars(select(UploadedFile)).all()
+            self.assertEqual({row.document_key for row in rows}, {"archive_a", "archive_b"})
+
     def test_zip_upload_groups_by_top_level_folder_and_skips_unsafe_paths(self):
         with tempfile.TemporaryDirectory() as tmpdir, self.Session() as session:
             upload = self._create_upload_batch(session)

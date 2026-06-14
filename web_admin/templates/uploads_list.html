@@ -15,7 +15,7 @@
 <section class="panel">
   <h2>新建上传</h2>
   {% if projects %}
-  <form class="upload-form" method="post" action="/uploads" enctype="multipart/form-data">
+  <form class="upload-form" data-upload-form method="post" action="/uploads" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label for="project_id">
       选择整理项目
@@ -30,11 +30,19 @@
       <input id="upload_name" name="upload_name" type="text" maxlength="255">
     </label>
     <label class="file-field" for="files">
-      文件
-      <input id="files" name="files" type="file" accept=".jpg,.jpeg,.png,.bmp,.tiff,.tif,.zip" multiple required>
+      图片或 zip
+      <input id="files" data-file-input name="files" type="file" accept=".jpg,.jpeg,.png,.bmp,.tiff,.tif,.zip" multiple>
+    </label>
+    <label class="file-field" for="folder_files">
+      文件夹
+      <input id="folder_files" data-folder-input name="files" type="file" accept=".jpg,.jpeg,.png,.bmp,.tiff,.tif" multiple webkitdirectory directory>
     </label>
     <button type="submit">上传</button>
   </form>
+  <div class="drop-zone" data-dropzone>
+    拖放图片或 zip 到这里
+  </div>
+  <p class="upload-status muted" data-upload-status></p>
   {% else %}
   <p class="empty-state">
     暂无可用整理项目{% if "project:manage" in user.permissions %}，可先<a href="/admin/projects/new">新建整理项目</a>{% endif %}。
@@ -95,4 +103,100 @@
   <a class="button-link" href="/uploads?{% if selected_project_id %}project_id={{ selected_project_id }}&{% endif %}page={{ result.page + 1 }}&page_size={{ result.page_size }}">下一页</a>
 </p>
 {% endif %}
+<script>
+(() => {
+  const form = document.querySelector("[data-upload-form]");
+  if (!form) {
+    return;
+  }
+
+  const fileInput = form.querySelector("[data-file-input]");
+  const folderInput = form.querySelector("[data-folder-input]");
+  const dropZone = document.querySelector("[data-dropzone]");
+  const status = document.querySelector("[data-upload-status]");
+
+  const setStatus = (message) => {
+    if (status) {
+      status.textContent = message;
+    }
+  };
+  const hasSelection = () => (
+    (fileInput && fileInput.files.length > 0) ||
+    (folderInput && folderInput.files.length > 0)
+  );
+  const updateSelectedStatus = () => {
+    const fileCount = fileInput ? fileInput.files.length : 0;
+    const folderCount = folderInput ? folderInput.files.length : 0;
+    const count = Math.max(fileCount, folderCount);
+    setStatus(count > 0 ? `已选择 ${count} 个文件` : "");
+  };
+
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files.length > 0 && folderInput) {
+      folderInput.value = "";
+    }
+    updateSelectedStatus();
+  });
+
+  folderInput.addEventListener("change", () => {
+    if (folderInput.files.length > 0 && fileInput) {
+      fileInput.value = "";
+    }
+    updateSelectedStatus();
+  });
+
+  form.addEventListener("submit", (event) => {
+    if (!hasSelection()) {
+      event.preventDefault();
+      setStatus("请选择图片、zip 或文件夹。");
+    }
+  });
+
+  ["dragover", "drop"].forEach((eventName) => {
+    document.addEventListener(eventName, (event) => {
+      if (!event.target.closest("[data-dropzone]")) {
+        event.preventDefault();
+      }
+    });
+  });
+
+  if (!dropZone || !fileInput) {
+    return;
+  }
+
+  ["dragenter", "dragover"].forEach((eventName) => {
+    dropZone.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      dropZone.classList.add("is-dragging");
+    });
+  });
+
+  ["dragleave", "drop"].forEach((eventName) => {
+    dropZone.addEventListener(eventName, () => {
+      dropZone.classList.remove("is-dragging");
+    });
+  });
+
+  dropZone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    const items = Array.from(event.dataTransfer.items || []);
+    const hasDirectory = items.some((item) => {
+      const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+      return entry && entry.isDirectory;
+    });
+    if (hasDirectory) {
+      setStatus("拖拽文件夹请改用“选择文件夹”或 zip。");
+      return;
+    }
+
+    if (event.dataTransfer.files.length > 0) {
+      fileInput.files = event.dataTransfer.files;
+      if (folderInput) {
+        folderInput.value = "";
+      }
+      updateSelectedStatus();
+    }
+  });
+})();
+</script>
 {% endblock %}

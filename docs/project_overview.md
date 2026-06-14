@@ -8,7 +8,7 @@
 
 ## 1 一句话项目定位
 
-**输入**:一堆扫描成图片的纸质档案(每个档案一个子目录,目录里是该档案的多页扫描件),也可以通过 Web 上传散图或 zip。
+**输入**:一堆扫描成图片的纸质档案(每个档案一个子目录,目录里是该档案的多页扫描件),也可以通过 Web 上传散图、zip 或文件夹。
 **输出**:每份档案的结构化元数据(题名、责任者、分类号、保管期限、档号、件号等共 17 个字段),以 JSON + CSV 双格式落盘,可选同时写入 PostgreSQL,并提供 Web 后台供上传跑批、人工查看、过滤、修正。
 
 **核心流程**:OCR(图像→文字) → LLM(文字→结构化字段) → 规则引擎(校验/修正/补全) → 序号分配 → 导出。
@@ -78,7 +78,7 @@
 
 - **OCR/LLM/规则** 这条**热路径**是项目的论文贡献区,绝大部分文件没有依赖外部服务的硬要求(除了 vLLM 是 HTTP 调用)
 - **PostgreSQL 入库**对 `main.py` 是**旁路**,管线不开 DB 也能跑(`DATABASE_URL` 留空时整条管线行为不变)
-- **Web 后台**依赖数据库,支持上传图片/zip 并启动在线跑批;请求线程只建上传批次和处理批次,OCR/LLM 在 FastAPI background task 中执行,仍复用 `ArchiveClassifier + BatchProcessor + BatchRecorder`
+- **Web 后台**依赖数据库,支持上传图片/zip/文件夹并启动在线跑批;请求线程只建上传批次和处理批次,OCR/LLM 在 FastAPI background task 中执行,仍复用 `ArchiveClassifier + BatchProcessor + BatchRecorder`
 - **人工修正保护**仍然成立:Web 改了元数据后,后续自动跑同一档案时会被 `correction_status = "corrected"` 标志保护,不覆盖人工结果
 
 ---
@@ -99,7 +99,7 @@ input_documents/
 启动方式有两种:
 
 - 命令行:`python main.py`(`DATABASE_URL` 已设则同时写库)
-- Web:`/uploads` 上传图片或 zip,再点击"开始处理"创建在线跑批
+- Web:`/uploads` 上传图片、zip 或文件夹,再点击"开始处理"创建在线跑批
 
 ### 4.2 阶段 1:目录扫描(`BatchProcessor.process_directory`)
 
@@ -393,7 +393,7 @@ organizations  ──┐
 | `/admin/projects` | 项目列表(可按单位过滤) | `project:manage` |
 | `/admin/projects/new` | 新建项目(`org_admin` 锁本单位,项目标识自动生成) | `project:manage` |
 | `/admin/projects/{id}/disable\|enable` | 启用/禁用项目 | `project:manage` |
-| `/uploads` | 上传图片/zip,查看上传记录 | `batch:manage` |
+| `/uploads` | 上传图片/zip/文件夹,查看上传记录 | `batch:manage` |
 | `/uploads/{id}/start` | 启动上传批次的在线处理 | `batch:manage` |
 | `/processing/batches/{id}` | 在线跑批进度、任务和事件 | `batch:manage` |
 | `/batches?project_key=K` | 按项目查批次 | `archive:view` |
@@ -610,7 +610,7 @@ python main.py
 uvicorn web_admin.app:create_app --factory --host 0.0.0.0 --port 8080
 
 # 8) 浏览器在线跑批
-# 登录后访问 /admin/projects 创建项目,再访问 /uploads 上传图片或 zip 并点击开始处理
+# 登录后访问 /admin/projects 创建项目,再访问 /uploads 上传图片、zip 或文件夹并点击开始处理
 ```
 
 ---
@@ -630,7 +630,7 @@ uvicorn web_admin.app:create_app --factory --host 0.0.0.0 --port 8080
 | PostgreSQL 旁路入库(失败不影响管线) | ✅ |
 | CLI:archive_query / user_admin / force_rerun / processing_runner | ✅ |
 | Web 后台:登录 + 用户/单位/项目管理 + 批次/档案/修订/审计只读 + 4 字段人工修正 | ✅ |
-| Web 上传图片/zip + 在线跑批进度页 | ✅ |
+| Web 上传图片/zip/文件夹 + 在线跑批进度页 | ✅ |
 | 权限矩阵(三角色)+ 组织隔离 + CSRF | ✅ |
 | 覆盖核心/DB/Web/CLI 的回归测试 | ✅ |
 

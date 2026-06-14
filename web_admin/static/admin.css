@@ -343,7 +343,7 @@ button.secondary:hover,
 
 .upload-form {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) minmax(280px, 1.3fr) auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(210px, 1.2fr) minmax(210px, 1.2fr) auto;
   gap: 14px;
   align-items: end;
   margin-bottom: 0;
@@ -359,6 +359,28 @@ button.secondary:hover,
 .file-field input {
   border-style: dashed;
   background: var(--panel-soft);
+}
+
+.drop-zone {
+  margin-top: 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-weight: 700;
+  text-align: center;
+}
+
+.drop-zone.is-dragging {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.upload-status {
+  min-height: 21px;
+  margin: 8px 0 0;
 }
 
 table {

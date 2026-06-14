@@ -41,7 +41,12 @@ export WEB_MAX_UPLOAD_BYTES="209715200"
 export WEB_MAX_UPLOAD_FILES="2000"
 ```
 
-生产 HTTPS 后应把 `WEB_COOKIE_SECURE=true`。`WEB_UPLOAD_STORAGE_ROOT` 保存上传原图，`WEB_PROCESSING_OUTPUT_ROOT` 保存在线跑批导出的 JSON/CSV。
+生产 HTTPS 后应把 `WEB_COOKIE_SECURE=true`。`WEB_UPLOAD_STORAGE_ROOT` 保存上传原图，`WEB_PROCESSING_OUTPUT_ROOT` 保存在线跑批导出的 JSON/CSV。`WEB_MAX_UPLOAD_BYTES` 默认 200 MiB,上传大文件夹前应按机器磁盘和网络情况调大,例如 2 GiB:
+
+```bash
+export WEB_MAX_UPLOAD_BYTES="$((2 * 1024 * 1024 * 1024))"
+export WEB_MAX_UPLOAD_FILES="10000"
+```
 
 ### 2.1 长期固定配置
 
@@ -198,14 +203,14 @@ journalctl -u fileforge-web -f
 1. 登录后台。
 2. 进入 `/admin/projects` 创建或确认项目。
 3. 进入 `/uploads`。
-4. 选择项目,上传散图或 zip。
+4. 选择项目,上传散图、zip 或文件夹。
 5. 上传成功后点击“开始处理”。
 6. 系统创建 `processing_batches` 和 `processing_jobs`。
 7. FastAPI background task 调用 `run_upload_processing_batch`。
 8. 后台任务复用 `ArchiveClassifier + BatchProcessor + BatchRecorder` 完成 OCR、LLM、规则、导出和入库。
 9. 进入 `/processing/batches/{batch_id}` 查看任务进度、事件和结果入口。
 
-zip 上传约定:一级目录表示一份档案；散图上传会被归为同一份档案。
+zip 上传约定:一级目录表示一份档案；散图上传会被归为同一份档案。文件夹上传支持两种常见结构:直接选择某个档案文件夹时,该文件夹是一份档案；选择批量根目录时,根目录下的每个子目录是一份档案。浏览器拖拽文件夹的兼容性不稳定,大批量目录建议点击“文件夹”选择,或先压缩成 zip。
 
 也可以用 CLI 处理已经上传成功的批次，适合演示补跑或未来独立 worker 过渡:
 
@@ -219,7 +224,7 @@ python -m utils.processing_runner --upload-batch-id 1
 
 - `/login`: 登录页。
 - `/`: 登录后的后台首页。
-- `/uploads`: 上传图片/zip、查看上传批次、启动处理。
+- `/uploads`: 上传图片/zip/文件夹、查看上传批次、启动处理。
 - `/processing/batches/{batch_id}`: 在线跑批进度、任务列表和事件流。
 - `/admin/users`: 用户列表。
 - `/admin/users/new`: 新建用户。

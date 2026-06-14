@@ -57,7 +57,7 @@ def ingest_upload_files(
     upload_root.mkdir(parents=True, exist_ok=True)
     total_size = 0
     total_files = 0
-    image_page_no = 0
+    image_page_counters: dict[str, int] = {}
 
     for file in files:
         ext = _extension(file.filename)
@@ -73,14 +73,13 @@ def ingest_upload_files(
                 max_files=remaining_files,
             )
         else:
-            image_page_no += 1
             added_size, added_files = _copy_image_upload(
                 session,
                 upload_batch_id=upload_batch_id,
                 upload_root=upload_root,
                 upload_name=upload_name,
                 file=file,
-                page_no=image_page_no,
+                page_counters=image_page_counters,
                 max_bytes=remaining_bytes,
             )
         total_size += added_size
@@ -108,6 +107,34 @@ def ingest_upload_files(
 
 def _extension(filename: Optional[str]) -> str:
     return Path(filename or "").suffix.lower()
+
+
+def _is_unsafe_upload_filename(filename: Optional[str]) -> bool:
+    raw = (filename or "").replace("\\", "/").strip()
+    if not raw:
+        return False
+    parts = [part for part in raw.split("/") if part not in {"", "."}]
+    return (
+        raw.startswith("/")
+        or re.match(r"^[A-Za-z]:", raw) is not None
+        or any(part == ".." for part in parts)
+    )
+
+
+def _safe_upload_path_parts(filename: Optional[str]) -> list[str]:
+    raw = (filename or "").replace("\\", "/").strip()
+    if not raw or _is_unsafe_upload_filename(filename):
+        return []
+    parts = [part for part in raw.split("/") if part not in {"", "."}]
+    return parts
+
+
+def _document_key_from_upload_parts(parts: list[str], *, fallback: str) -> str:
+    if len(parts) >= 3:
+        return safe_segment(parts[1], fallback=fallback)
+    if len(parts) >= 2:
+        return safe_segment(parts[0], fallback=fallback)
+    return fallback
 
 
 def _sha256_file(path: Path) -> str:
@@ -180,14 +207,26 @@ def _copy_image_upload(
     upload_root: Path,
     upload_name: str,
     file: UploadFile,
-    page_no: int,
+    page_counters: dict[str, int],
     max_bytes: int,
 ) -> tuple[int, int]:
-    filename = Path(file.filename or f"page_{page_no:04d}").name
+    if _is_unsafe_upload_filename(file.filename):
+        return 0, 0
+
+    fallback_document_key = safe_segment(upload_name, fallback=f"upload_{upload_batch_id}")
+    parts = _safe_upload_path_parts(file.filename)
+    filename = parts[-1] if parts else Path(file.filename or "").name
+    if not filename:
+        filename = "page"
     if _extension(filename) not in SUPPORTED_IMAGE_EXTS:
         return 0, 0
 
-    document_key = safe_segment(upload_name, fallback=f"upload_{upload_batch_id}")
+    document_key = _document_key_from_upload_parts(
+        parts,
+        fallback=fallback_document_key,
+    )
+    page_counters[document_key] = page_counters.get(document_key, 0) + 1
+    page_no = page_counters[document_key]
     document_dir = upload_root / document_key
     document_dir.mkdir(parents=True, exist_ok=True)
     stored = document_dir / f"{page_no:04d}_{safe_segment(filename, fallback='page')}"
@@ -197,7 +236,7 @@ def _copy_image_upload(
     _add_uploaded_file(
         session,
         upload_batch_id=upload_batch_id,
-        original_filename=filename,
+        original_filename=file.filename or filename,
         stored_path=stored,
         mime_type=file.content_type,
         document_key=document_key,
