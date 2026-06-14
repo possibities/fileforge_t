@@ -175,70 +175,18 @@ docker exec postgres psql -U postgres -d fileforge_current -c "\dt"
 
 如果选择使用网页处理档案，不需要手动运行 `python main.py`。Web 页面点击“开始处理”后，会在后台复用同一条 OCR/LLM/规则/导出流程。
 
-初始化账号：
-
-```bash
-cd ~/document/mybishe/fileforge
-conda activate fileforge
-
-export DATABASE_URL="postgresql+psycopg://fileforge:fileforge_local@127.0.0.1:5432/fileforge_current"
-
-python -m utils.user_admin roles init
-
-python -m utils.user_admin users create \
-  --username admin \
-  --password 'Admin@fileforge2026' \
-  --display-name '系统管理员' \
-  --role platform_admin
-```
-
-`roles init` 当前只是兼容命令，角色权限由 `app_users.role` 和代码映射提供。密码至少 12 位；`Admin@fileforge2026` 只适合本机演示或临时环境，正式环境应换成新的强密码。
-
-验证账号可登录：
-
-```bash
-python -m utils.user_admin login \
-  --username admin \
-  --password 'Admin@fileforge2026'
-```
-
-成功时会返回：
-
-```json
-{
-  "authenticated": true,
-  "id": 1,
-  "username": "admin",
-  "display_name": "系统管理员"
-}
-```
-
-网页登录账号：
+当前演示库已经保留以下 Web 登录账号：
 
 ```text
-用户名：admin
-密码：Admin@fileforge2026
+平台管理员：admin / Admin@fileforge2026
+单位操作员：operator01 / Operator@fileforge2026
 ```
 
-如果创建时提示用户已存在，可重置密码：
+`Admin@fileforge2026` 和 `Operator@fileforge2026` 只适合本机演示或临时环境，正式环境应换成新的强密码。
 
-```bash
-python -m utils.user_admin users reset-password \
-  --username admin \
-  --password 'Admin@fileforge2026'
-```
+### 8.1 准备演示单位和项目
 
-### 8.1 准备演示单位、项目和操作员
-
-为了网页演示更完整，可以预置一个单位、一个项目和一个单位操作员账号。
-
-创建演示单位：
-
-```bash
-python -m utils.user_admin orgs create --name "档案室"
-```
-
-如果提示单位已存在，可以直接查数据库里的 id：
+为了网页演示更完整，可以预置一个单位和一个项目。先查看数据库里已有单位：
 
 ```bash
 docker exec postgres psql -U postgres -d fileforge_current -c "SELECT id, name, status FROM organizations ORDER BY id;"
@@ -256,39 +204,7 @@ docker exec postgres psql -U postgres -d fileforge_current -c "SELECT id, name, 
 docker exec postgres psql -U postgres -d fileforge_current -c "SELECT id, project_key, project_name, organization_id, status FROM projects ORDER BY id;"
 ```
 
-创建单位操作员。把 `--organization-id 1` 改成上一步 `档案室` 的实际 id：
-
-```bash
-python -m utils.user_admin users create \
-  --username operator01 \
-  --password 'Operator@fileforge2026' \
-  --display-name '演示操作员' \
-  --organization-id 1 \
-  --role org_operator
-```
-
-如果用户已存在，重置密码：
-
-```bash
-python -m utils.user_admin users reset-password \
-  --username operator01 \
-  --password 'Operator@fileforge2026'
-```
-
-查看用户：
-
-```bash
-python -m utils.user_admin users list
-```
-
-演示账号：
-
-```text
-平台管理员：admin / Admin@fileforge2026
-单位操作员：operator01 / Operator@fileforge2026
-```
-
-平台管理员用于创建单位、项目和用户；单位操作员用于演示本单位上传、跑批、查看和人工修正。
+平台管理员用于管理单位、项目和用户；单位操作员用于演示本单位上传、跑批、查看和人工修正。
 
 启动 Web 前设置运行环境：
 
