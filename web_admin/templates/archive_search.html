@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}档案查询 - FileForge 管理后台{% endblock %}
+{% block head_extra %}<script defer src="/static/archive_search.js"></script>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="eyebrow">Archive Query</p>
+    <h1>档案查询</h1>
+    {% if scope_locked %}
+    <p class="muted">整理项目: {{ project.project_key }};批次: {{ batch.batch_key }}</p>
+    {% else %}
+    <p class="muted">跨批次检索,按当前单位权限范围自动隔离</p>
+    {% endif %}
+  </div>
+  {% if scope_locked %}
+  <a class="button-link" href="/archives?project_key={{ project.project_key }}">切换到全局查询</a>
+  {% endif %}
+</div>
+
+<div class="archive-workspace" data-grid-root>
+  <section class="archive-grid-pane" id="archive-grid-pane">
+    {% include "_archive_grid.html" %}
+  </section>
+
+  <aside class="archive-detail-pane" id="detail-pane" aria-label="档案详情">
+    {% if panel_archive %}
+      {% with archive = panel_archive, compact = true %}
+      {% include "_archive_panel.html" %}
+      {% endwith %}
+    {% else %}
+    <div class="detail-pane-empty empty-state">在左侧点击任意一行,这里显示档案详情与页面图像。</div>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

@@ -820,6 +820,91 @@ class TestListArchives(unittest.TestCase):
 
 
 @unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
+class TestSearchArchives(unittest.TestCase):
+    def setUp(self):
+        self.engine = _make_engine()
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, future=True, expire_on_commit=False)
+        with self.Session() as session:
+            self.ids = _seed_query_fixtures(session)
+            session.commit()
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+
+    def test_cross_batch_returns_all_without_batch_id(self):
+        with self.Session() as session:
+            result = queries.search_archives(session)
+        # 全部 6 个档案(batch_b 无档案)。
+        self.assertEqual(result.total, 6)
+
+    def test_batch_id_scopes_to_one_batch(self):
+        with self.Session() as session:
+            result = queries.search_archives(
+                session, batch_id=self.ids["batch_a_id"]
+            )
+        self.assertEqual(result.total, 6)
+        with self.Session() as session:
+            empty = queries.search_archives(
+                session, batch_id=self.ids["batch_b_id"]
+            )
+        self.assertEqual(empty.total, 0)
+
+    def test_project_key_filter(self):
+        with self.Session() as session:
+            hit = queries.search_archives(session, project_key="proj_test")
+            miss = queries.search_archives(session, project_key="nope")
+        self.assertEqual(hit.total, 6)
+        self.assertEqual(miss.total, 0)
+
+    def test_filter_reuses_archive_filter(self):
+        with self.Session() as session:
+            result = queries.search_archives(
+                session, filter=queries.ArchiveFilter(archive_year=2024)
+            )
+        self.assertEqual(result.total, 1)
+        self.assertEqual(result.items[0].archive_year, "2024")
+
+    def test_sort_by_year_desc_orders_rows(self):
+        with self.Session() as session:
+            result = queries.search_archives(
+                session, sort_field="archive_year", sort_dir="desc"
+            )
+        years = [a.archive_year for a in result.items]
+        self.assertEqual(years, sorted(years, reverse=True))
+
+    def test_unknown_sort_field_falls_back_to_default(self):
+        with self.Session() as session:
+            result = queries.search_archives(
+                session, sort_field="; DROP TABLE archive_records;--"
+            )
+        # 回落默认 archive_no asc nulls last;前 3 个有 archive_no。
+        archive_nos = [a.archive_no for a in result.items]
+        self.assertEqual(archive_nos[:3], [
+            "2025-DQL-Y-0001", "2025-ZHL-D30-0001", "2025-ZHL-D30-0002",
+        ])
+
+    def test_page_size_over_cap_raises(self):
+        with self.Session() as session:
+            with self.assertRaises(ValueError):
+                queries.search_archives(session, page_size=201)
+
+    def test_organization_scope_isolates_other_org(self):
+        with self.Session() as session:
+            project = session.get(Project, self.ids["project_id"])
+            hidden = session.get(ArchiveRecord, self.ids["archive_ids"][1])
+            assert project is not None and hidden is not None
+            project.organization_id = 10
+            hidden.organization_id = 20
+            session.commit()
+
+            scoped = queries.search_archives(session, organization_id=10)
+        self.assertEqual(scoped.total, 5)
+        self.assertNotIn("ar1", [item.archive_key for item in scoped.items])
+
+
+@unittest.skipUnless(SQLALCHEMY_AVAILABLE, f"sqlalchemy 未安装: {_IMPORT_ERROR}")
 class TestGetArchiveDetail(unittest.TestCase):
     def setUp(self):
         self.engine = _make_engine()

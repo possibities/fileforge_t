@@ -521,6 +521,104 @@ def list_archives(
     )
 
 
+# ── 排序白名单 ────────────────────────────────────────────────────────────────
+# 对外暴露的排序键 → ArchiveRecord 列。查询串里的 sort 经字典映射取列,
+# 命中才排序、未命中回落默认,杜绝任意列名注入。
+ARCHIVE_SORT_FIELDS: dict[str, Any] = {
+    "archive_no": ArchiveRecord.archive_no,
+    "item_no": ArchiveRecord.item_no,
+    "archive_year": ArchiveRecord.archive_year,
+    "title": ArchiveRecord.title,
+    "classification_code": ArchiveRecord.classification_code,
+    "retention_period": ArchiveRecord.retention_period,
+    "responsible_party": ArchiveRecord.responsible_party,
+    "openness_status": ArchiveRecord.openness_status,
+    "processing_status": ArchiveRecord.processing_status,
+    "review_status": ArchiveRecord.review_status,
+    "page_count": ArchiveRecord.page_count,
+    "updated_at": ArchiveRecord.updated_at,
+}
+
+
+def search_archives(
+    session: Session,
+    *,
+    filter: Optional[ArchiveFilter] = None,
+    organization_id: Optional[int] = None,
+    project_key: Optional[str] = None,
+    batch_id: Optional[int] = None,
+    sort_field: Optional[str] = None,
+    sort_dir: str = "asc",
+    page: int = 1,
+    page_size: int = 50,
+) -> "ListResult[ArchiveSummary]":
+    """跨批次档案检索:不强制 batch_id,支持可选 project_key/batch_id 过滤、
+    排序白名单与组织隔离。
+
+    组织隔离子句与 list_archives 完全一致(Project + ProcessingBatch + ArchiveRecord
+    三段 org 校验);batch_id=None 时退化为全库检索。ArchiveRecord→batch→project 为
+    多对一,join 不放大行数,count 子查询无需 DISTINCT。
+    """
+    _validate_pagination(page, page_size)
+
+    base = select(ArchiveRecord)
+    if batch_id is not None:
+        base = base.where(ArchiveRecord.batch_id == batch_id)
+
+    # 组织隔离或按 project_key 过滤都需要 join 到 Project。
+    if organization_id is not None or project_key is not None:
+        base = base.join(
+            ProcessingBatch, ArchiveRecord.batch_id == ProcessingBatch.id
+        ).join(Project, ProcessingBatch.project_id == Project.id)
+    if project_key is not None:
+        base = base.where(Project.project_key == project_key)
+    if organization_id is not None:
+        base = (
+            base.where(Project.organization_id == organization_id)
+            .where(
+                or_(
+                    ProcessingBatch.organization_id == organization_id,
+                    ProcessingBatch.organization_id.is_(None),
+                )
+            )
+            .where(
+                or_(
+                    ArchiveRecord.organization_id == organization_id,
+                    ArchiveRecord.organization_id.is_(None),
+                )
+            )
+        )
+
+    if filter is not None:
+        base = _apply_archive_filter(base, filter)
+
+    total = session.scalar(
+        select(func.count()).select_from(base.subquery())
+    ) or 0
+
+    column = ARCHIVE_SORT_FIELDS.get((sort_field or "").strip())
+    if column is not None:
+        primary = column.desc() if sort_dir == "desc" else column.asc()
+        order_by = (primary.nullslast(), ArchiveRecord.id.asc())
+    else:
+        order_by = (
+            ArchiveRecord.archive_no.asc().nullslast(),
+            ArchiveRecord.item_no.asc().nullslast(),
+            ArchiveRecord.id.asc(),
+        )
+
+    rows = session.scalars(
+        _paginate(base.order_by(*order_by), page=page, page_size=page_size)
+    ).all()
+
+    return _build_list_result(
+        items=[_archive_to_summary(ar) for ar in rows],
+        total=int(total),
+        page=page,
+        page_size=page_size,
+    )
+
+
 def _page_to_dataclass(p: ArchivePageModel) -> ArchivePage:
     return ArchivePage(
         id=p.id,
@@ -833,6 +931,8 @@ __all__ = [
     "list_batches",
     "get_batch_detail",
     "list_archives",
+    "search_archives",
+    "ARCHIVE_SORT_FIELDS",
     "get_archive_detail",
     "list_revisions",
     "list_audit_logs",

@@ -19,8 +19,12 @@
 </section>
 
 <nav class="action-grid" aria-label="后台入口">
+  <a class="action-link primary" href="/archives">
+    <strong>档案查询</strong>
+    <span>跨批次检索 + 同页预览</span>
+  </a>
   {% if "batch:manage" in user.permissions %}
-  <a class="action-link primary" href="/uploads">
+  <a class="action-link" href="/uploads">
     <strong>上传跑批</strong>
     <span>创建上传批次</span>
   </a>

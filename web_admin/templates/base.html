@@ -16,7 +16,9 @@
     {% if user is defined and user %}
     {% set current_path = request.url.path %}
     <nav class="nav">
-      {% set batches_active = current_path.startswith('/batches') or current_path.startswith('/archives') or current_path.startswith('/processing/batches') %}
+      {% set archives_active = current_path == '/archives' or current_path.startswith('/archives/') %}
+      <a href="/archives" class="{% if archives_active %}active{% endif %}"{% if archives_active %} aria-current="page"{% endif %}>档案</a>
+      {% set batches_active = current_path.startswith('/batches') or current_path.startswith('/processing/batches') %}
       <a href="/batches" class="{% if batches_active %}active{% endif %}"{% if batches_active %} aria-current="page"{% endif %}>批次</a>
       {% if "batch:manage" in user.permissions %}
       {% set uploads_active = current_path.startswith('/uploads') %}

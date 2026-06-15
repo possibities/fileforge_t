@@ -307,6 +307,121 @@ class TestArchiveQueryRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn("无字段变化", resp.text)
 
+    # ── 全局档案查询(跨批次)──────────────────────────────────────────────
+    def test_global_search_lists_across_batches_for_platform_admin(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get("/archives")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("春风行动简报", resp.text)
+        self.assertIn("日常公文汇编", resp.text)
+        self.assertIn("乙单位文件", resp.text)
+
+    def test_global_search_fetch_header_returns_grid_fragment(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get("/archives", headers={"X-Requested-With": "fetch"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("data-grid-table", resp.text)
+        # 片段不含整页骨架。
+        self.assertNotIn('class="topbar"', resp.text)
+
+    def test_global_search_org_scope_hides_other_org(self):
+        with TestClient(self.app) as client:
+            self._login(client, OPERATOR_USERNAME, OPERATOR_PASSWORD)
+            resp = client.get("/archives")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("春风行动简报", resp.text)
+        self.assertIn("日常公文汇编", resp.text)
+        self.assertNotIn("乙单位文件", resp.text)
+
+    def test_global_search_filters_by_title_like(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get("/archives", params={"title_like": "春风"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("春风行动简报", resp.text)
+        self.assertNotIn("日常公文汇编", resp.text)
+
+    def test_global_search_filters_by_project_key(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get("/archives", params={"project_key": "proj_a"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("春风行动简报", resp.text)
+        self.assertNotIn("乙单位文件", resp.text)
+
+    def test_global_search_sort_by_year_desc_orders_rows(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get(
+                "/archives", params={"sort": "archive_year", "dir": "desc"}
+            )
+        self.assertEqual(resp.status_code, 200)
+        # 2021(春风)应排在 2020(日常)之前。
+        self.assertLess(
+            resp.text.index("春风行动简报"), resp.text.index("日常公文汇编")
+        )
+
+    def test_global_search_unknown_sort_field_falls_back(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get(
+                "/archives", params={"sort": "evil); DROP TABLE archive_records;--"}
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("春风行动简报", resp.text)
+
+    def test_global_search_page_size_over_cap_returns_400(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get("/archives", params={"page_size": "999"})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_global_search_selected_renders_panel_inline(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get(
+                "/archives", params={"selected": self.archive_spring_id}
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("整编完成-FM标记", resp.text)
+        self.assertIn(
+            f"/archives/{self.archive_spring_id}/pages/{self.archive_spring_page_id}/image",
+            resp.text,
+        )
+
+    def test_global_search_selected_other_org_ignored(self):
+        with TestClient(self.app) as client:
+            self._login(client, OPERATOR_USERNAME, OPERATOR_PASSWORD)
+            resp = client.get(
+                "/archives", params={"selected": self.archive_other_org_id}
+            )
+        self.assertEqual(resp.status_code, 200)
+        # 越权选中被忽略:不渲染他单位档案的详情片段。
+        self.assertNotIn("乙单位文件", resp.text)
+
+    # ── 详情片段(主从右栏)────────────────────────────────────────────────
+    def test_archive_panel_fragment_renders_without_chrome(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get(f"/archives/{self.archive_spring_id}/panel")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("整编完成-FM标记", resp.text)
+        self.assertIn("page_001.jpg", resp.text)
+        self.assertIn('class="page-thumb"', resp.text)
+        # 片段不应包含整页骨架(顶栏)。
+        self.assertNotIn('class="topbar"', resp.text)
+
+    def test_archive_panel_fragment_org_scope_returns_404(self):
+        with TestClient(self.app) as client:
+            self._login(client, OPERATOR_USERNAME, OPERATOR_PASSWORD)
+            resp = client.get(
+                f"/archives/{self.archive_other_org_id}/panel",
+                follow_redirects=False,
+            )
+        self.assertEqual(resp.status_code, 404)
+
 
 @unittest.skipUnless(DEPENDENCIES_AVAILABLE, f"web deps missing: {_IMPORT_ERROR}")
 class TestArchiveEditRoute(unittest.TestCase):

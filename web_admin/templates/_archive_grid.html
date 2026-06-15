@@ -1,0 +1,158 @@
+{# 档案查询表格片段:整页(archive_search.html)与局部刷新(X-Requested-With: fetch)共用。 #}
+{% macro sortable(key, label) %}
+<a class="grid-sort{% if sort_field == key %} is-active{% endif %}" href="{{ sort_links[key] }}" data-grid-nav>{{ label }}<span class="grid-sort-arrow" aria-hidden="true">{% if sort_field == key %}{{ "▲" if sort_dir == "asc" else "▼" }}{% else %}↕{% endif %}</span></a>
+{% endmacro %}
+
+<form class="archive-grid-form" id="archive-grid-form" method="get" action="{{ path }}">
+  {# 提交时保留排序与选中态;过滤改变时 page 省略 → 回到第 1 页。 #}
+  <input type="hidden" name="sort" value="{{ sort_field }}">
+  <input type="hidden" name="dir" value="{{ sort_dir }}">
+  {% if selected_id %}<input type="hidden" name="selected" value="{{ selected_id }}">{% endif %}
+
+  <div class="grid-toolbar">
+    {% if not scope_locked %}
+    <label class="grid-scope">整理项目
+      <select name="project_key" data-autosubmit>
+        <option value="">全部项目</option>
+        {% for p in projects %}
+        <option value="{{ p.project_key }}"{% if project_key == p.project_key %} selected{% endif %}>{{ p.project_name or p.project_key }}{% if p.project_name %} ({{ p.project_key }}){% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="grid-scope">批次
+      <select name="batch_id" data-autosubmit{% if not batches %} disabled{% endif %}>
+        <option value="">全部批次</option>
+        {% for b in batches %}
+        <option value="{{ b.id }}"{% if batch_id == b.id %} selected{% endif %}>{{ b.batch_name or b.batch_key }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <label class="grid-scope">每页
+      <select name="page_size" data-autosubmit>
+        {% for size in page_size_choices %}
+        <option value="{{ size }}"{% if page_size == size %} selected{% endif %}>{{ size }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">查询</button>
+    <a class="button-link" href="{{ clear_url }}" data-grid-nav>清空筛选</a>
+
+    <details class="col-toggle">
+      <summary>列显示</summary>
+      <div class="col-toggle-menu">
+        {% for key, label in [
+          ("archive_no","档号"),("item_no","件号"),("title","题名"),
+          ("archive_year","年度"),("classification_code","分类号"),
+          ("retention_period","保管期限"),("responsible_party","责任者"),
+          ("openness_status","开放"),("processing_status","处理状态"),
+          ("review_status","复核"),("page_count","页数") ] %}
+        <label class="col-toggle-item"><input type="checkbox" data-col="{{ key }}" checked> {{ label }}</label>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
+
+  <div class="section-heading">
+    <h2>查询结果</h2>
+    <span class="muted">共 {{ result.total }} 条 · 第 {{ page }} / {{ total_pages }} 页</span>
+  </div>
+
+  <div class="archive-grid-scroll">
+    <table class="archive-grid" data-grid-table>
+      <thead>
+        <tr class="grid-head-row">
+          <th class="col-archive_no">{{ sortable("archive_no","档号") }}</th>
+          <th class="col-item_no">{{ sortable("item_no","件号") }}</th>
+          <th class="col-title">{{ sortable("title","题名") }}</th>
+          <th class="col-archive_year">{{ sortable("archive_year","年度") }}</th>
+          <th class="col-classification_code">{{ sortable("classification_code","分类号") }}</th>
+          <th class="col-retention_period">{{ sortable("retention_period","保管期限") }}</th>
+          <th class="col-responsible_party">{{ sortable("responsible_party","责任者") }}</th>
+          <th class="col-openness_status">{{ sortable("openness_status","开放") }}</th>
+          <th class="col-processing_status">{{ sortable("processing_status","处理状态") }}</th>
+          <th class="col-review_status">{{ sortable("review_status","复核") }}</th>
+          <th class="col-page_count">{{ sortable("page_count","页数") }}</th>
+          <th class="col-op">操作</th>
+        </tr>
+        <tr class="grid-filter-row">
+          <th class="col-archive_no"><input type="text" name="archive_no" value="{{ filters.archive_no }}" data-autosubmit placeholder="筛选"></th>
+          <th class="col-item_no"><input type="text" name="item_no" value="{{ filters.item_no }}" data-autosubmit placeholder="筛选"></th>
+          <th class="col-title"><input type="text" name="title_like" value="{{ filters.title_like }}" data-autosubmit placeholder="包含"></th>
+          <th class="col-archive_year"><input type="text" name="archive_year" value="{{ filters.archive_year }}" data-autosubmit placeholder="年度"></th>
+          <th class="col-classification_code"><input type="text" name="classification_code" value="{{ filters.classification_code }}" data-autosubmit placeholder="分类号"></th>
+          <th class="col-retention_period">
+            <select name="retention_period" data-autosubmit>
+              <option value="">全部</option>
+              {% for choice in retention_period_choices %}
+              <option value="{{ choice }}"{% if filters.retention_period == choice %} selected{% endif %}>{{ choice }}</option>
+              {% endfor %}
+            </select>
+          </th>
+          <th class="col-responsible_party"><input type="text" name="responsible_party_like" value="{{ filters.responsible_party_like }}" data-autosubmit placeholder="包含"></th>
+          <th class="col-openness_status">
+            <select name="openness_status" data-autosubmit>
+              <option value="">全部</option>
+              {% for choice in openness_status_choices %}
+              <option value="{{ choice }}"{% if filters.openness_status == choice %} selected{% endif %}>{{ choice }}</option>
+              {% endfor %}
+            </select>
+          </th>
+          <th class="col-processing_status">
+            <select name="processing_status" data-autosubmit>
+              <option value="">全部</option>
+              {% for choice in processing_status_choices %}
+              <option value="{{ choice }}"{% if filters.processing_status == choice %} selected{% endif %}>{{ choice }}</option>
+              {% endfor %}
+            </select>
+          </th>
+          <th class="col-review_status">
+            <select name="review_status" data-autosubmit>
+              <option value="">全部</option>
+              {% for choice in review_status_choices %}
+              <option value="{{ choice }}"{% if filters.review_status == choice %} selected{% endif %}>{{ choice }}</option>
+              {% endfor %}
+            </select>
+          </th>
+          <th class="col-page_count"></th>
+          <th class="col-op"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for archive in result.items %}
+        <tr class="grid-row{% if selected_id == archive.id %} is-selected{% endif %}" data-archive-id="{{ archive.id }}">
+          <td class="col-archive_no">{{ archive.archive_no or "" }}</td>
+          <td class="col-item_no">{{ archive.item_no or "" }}</td>
+          <td class="col-title">{{ archive.title or archive.archive_name }}</td>
+          <td class="col-archive_year">{{ archive.archive_year or "" }}</td>
+          <td class="col-classification_code">{{ archive.classification_code or "" }}</td>
+          <td class="col-retention_period">{{ archive.retention_period or "" }}</td>
+          <td class="col-responsible_party">{{ archive.responsible_party or "" }}</td>
+          <td class="col-openness_status">{{ archive.openness_status or "" }}</td>
+          <td class="col-processing_status"><span class="status-badge status-{{ archive.processing_status }}">{{ archive.processing_status }}</span></td>
+          <td class="col-review_status"><span class="status-badge status-{{ archive.review_status }}">{{ archive.review_status }}</span></td>
+          <td class="col-page_count">{{ archive.page_count }}</td>
+          <td class="col-op"><a class="row-open" href="{{ path }}?{{ row_base_qs }}{% if row_base_qs %}&{% endif %}selected={{ archive.id }}" data-archive-id="{{ archive.id }}">详情</a></td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="12" class="empty-state">暂无匹配档案</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</form>
+
+<form class="grid-pager" method="get" action="{{ path }}">
+  {# 独立分页表单:主筛选表单不含 page,提交即回第 1 页;此处携带完整状态做跳页。 #}
+  {% for key, value in state_params.items() %}
+  <input type="hidden" name="{{ key }}" value="{{ value }}">
+  {% endfor %}
+  {% if prev_url %}<a class="button-link" href="{{ prev_url }}" data-grid-nav>上一页</a>{% else %}<span class="button-link is-disabled">上一页</span>{% endif %}
+  {% if next_url %}<a class="button-link" href="{{ next_url }}" data-grid-nav>下一页</a>{% else %}<span class="button-link is-disabled">下一页</span>{% endif %}
+  <span class="grid-jump">
+    第 <input type="number" name="page" min="1" max="{{ total_pages }}" value="{{ page }}"> / {{ total_pages }} 页
+    <button type="submit">跳转</button>
+  </span>
+</form>
