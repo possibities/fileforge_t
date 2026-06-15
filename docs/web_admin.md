@@ -237,8 +237,10 @@ python -m utils.processing_runner --upload-batch-id 1
 - `/admin/projects/{project_id}/disable` 与 `/enable`: 切项目 status。
 - `/batches`: 按 `project_key` 查询批次。
 - `/batches/{batch_id}`: 批次详情。
-- `/batches/{batch_id}/archives`: 批次下档案列表和筛选。
-- `/archives/{archive_id}`: 档案详情;通过 `?notice=no_change` 显示“无字段变化”提示。
+- `/archives`: 全局档案查询。跨批次/项目检索,按当前用户单位权限自动隔离;左侧 Excel 式表格(点表头排序、列内联筛选行、表头与首列冻结、每页 50/100/200 + 跳页、列显示/隐藏),右侧分栏主从预览(点行即在右栏显示元数据与页面缩略图,不跳页)。可带 `?project_key=`、`?batch_id=`、各筛选字段、`?sort=&dir=`、`?selected=` 等查询串。
+- `/batches/{batch_id}/archives`: 复用同一张档案查询表格,锁定到该批次范围。
+- `/archives/{archive_id}`: 档案详情整页;通过 `?notice=no_change` 显示“无字段变化”提示。
+- `/archives/{archive_id}/panel`: 档案详情片段(分栏主从右栏用),只读,沿用与详情页相同的数据与单位隔离。
 - `/archives/{archive_id}/revisions`: 修订记录。
 - `/archives/{archive_id}/audit`: 审计记录。
 - `/archives/{archive_id}/edit`: 元数据人工修正(GET 表单 + POST 提交);仅允许编辑题名 / 责任者 / 实体分类号 / 保管期限 4 个字段。
@@ -270,7 +272,7 @@ python -m utils.processing_runner --upload-batch-id 1
 - Web 在线修正只覆盖 4 个核心字段(题名 / 责任者 / 实体分类号 / 保管期限);其它字段仍走规则重跑或后续扩展。
 - `档号` / `件号` 由 `SequenceGenerator` 分配,任何时候都不开放手工编辑。
 - 一期修正采用 last-write-wins,无乐观锁;并发提交都会留痕,后到的覆盖 `final_metadata`。
-- 当前页面是服务端渲染 HTML,无前端构建链。
+- 当前页面是服务端渲染 HTML,无前端构建链。档案查询页 `/archives` 额外带一份零依赖原生 JS(`web_admin/static/archive_search.js`),用 `X-Requested-With: fetch` 头请求表格/详情片段做局部刷新;关闭 JS 时表单整页提交、链接整页跳转、`?selected=` 服务端直出右栏,功能不丢。
 
 ## 10 验证建议
 
