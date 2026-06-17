@@ -179,6 +179,8 @@ docker exec postgres psql -U postgres -d fileforge_current -c "\dt"
 
 ```bash
 python scripts/seed_demo.py
+
+admin  admin@123456
 ```
 
 它会创建两个单位(甲档案室、乙档案室)与四个角色账号,口令统一为 `Demo@123456789`:
@@ -346,3 +348,111 @@ python -m unittest discover -s tests -p "test_*.py"
 ```bash
 unset DATABASE_URL PROJECT_KEY PROJECT_NAME BATCH_KEY
 ```
+
+## 11 数据库手工删除（管理员清理）
+
+适用于建错数据需要彻底清除的情况。注意几点：
+
+- **优先用网页删除**：档案详情、批次详情、上传列表都有"删除"按钮，会写审计日志，删上传还会清理磁盘原图。**用户与项目目前没有网页硬删除入口，只能用下面的 SQL。**
+- DB 直删**绕过应用层**：不写 `audit_logs`，也不会删除磁盘上的上传原图与导出文件（见 11.4）。
+- 删除不可恢复。先用 `SELECT` 确认范围，必要时先 `pg_dump` 备份。
+- **不要删掉最后一个 `platform_admin`**，否则无法登录管理后台。
+
+下列命令在装有 `postgres` 容器、数据库为 `fileforge_current` 的机器上执行。
+
+### 11.1 删除用户
+
+先查看现有用户：
+
+```bash
+docker exec postgres psql -U postgres -d fileforge_current -c "SELECT id, username, display_name, role, status, organization_id FROM app_users ORDER BY id;"
+```
+
+删除指定用户（把 `-v u=` 后面换成要删的用户名）。会一并删除其登录会话，并把它在项目/批次/上传/修订/审计里的"创建人/操作人"引用置空：
+
+```bash
+docker exec -i postgres psql -U postgres -d fileforge_current -v u=wrong_user <<'SQL'
+BEGIN;
+DELETE FROM web_sessions      WHERE user_id      = (SELECT id FROM app_users WHERE username = :'u');
+UPDATE projects           SET created_by    = NULL WHERE created_by    = (SELECT id FROM app_users WHERE username = :'u');
+UPDATE upload_batches     SET uploaded_by   = NULL WHERE uploaded_by   = (SELECT id FROM app_users WHERE username = :'u');
+UPDATE processing_batches SET created_by    = NULL WHERE created_by    = (SELECT id FROM app_users WHERE username = :'u');
+UPDATE export_files       SET created_by    = NULL WHERE created_by    = (SELECT id FROM app_users WHERE username = :'u');
+UPDATE metadata_revisions SET created_by    = NULL WHERE created_by    = (SELECT id FROM app_users WHERE username = :'u');
+UPDATE audit_logs         SET actor_user_id = NULL WHERE actor_user_id = (SELECT id FROM app_users WHERE username = :'u');
+DELETE FROM app_users         WHERE username = :'u';
+COMMIT;
+SQL
+```
+
+> 只是想停用而非删除：网页"用户管理"里有"禁用/启用"按钮，更安全可逆。
+
+### 11.2 删除批次（连带其下所有档案）
+
+> 网页"批次详情"页已有"删除批次"按钮（会写审计），优先用网页。下面是数据库做法。
+
+先查出批次 id：
+
+```bash
+docker exec postgres psql -U postgres -d fileforge_current -c "SELECT b.id, b.batch_key, p.project_key FROM processing_batches b JOIN projects p ON p.id = b.project_id ORDER BY b.id;"
+```
+
+把 `-v bid=` 后面换成上面查到的批次 id：
+
+```bash
+docker exec -i postgres psql -U postgres -d fileforge_current -v bid=1 <<'SQL'
+BEGIN;
+-- 先解除 档案↔任务 的双向引用，避免删除顺序被外键阻塞
+UPDATE archive_records SET job_id     = NULL WHERE batch_id = :bid;
+UPDATE processing_jobs SET archive_id = NULL WHERE batch_id = :bid;
+DELETE FROM archive_pages      WHERE archive_id IN (SELECT id FROM archive_records WHERE batch_id = :bid);
+DELETE FROM llm_traces         WHERE archive_id IN (SELECT id FROM archive_records WHERE batch_id = :bid);
+DELETE FROM metadata_revisions WHERE archive_id IN (SELECT id FROM archive_records WHERE batch_id = :bid);
+DELETE FROM processing_events  WHERE batch_id = :bid;
+UPDATE export_files SET batch_id = NULL WHERE batch_id = :bid;
+DELETE FROM archive_records    WHERE batch_id = :bid;
+DELETE FROM processing_jobs    WHERE batch_id = :bid;
+DELETE FROM processing_batches WHERE id = :bid;
+COMMIT;
+SQL
+```
+
+### 11.3 删除项目（连带其批次、档案、上传、序号计数器）
+
+把 `-v pk=` 后面换成要删的项目 `project_key`：
+
+```bash
+docker exec -i postgres psql -U postgres -d fileforge_current -v pk=demo_2026 <<'SQL'
+BEGIN;
+UPDATE archive_records SET job_id     = NULL WHERE project_id = (SELECT id FROM projects WHERE project_key = :'pk');
+UPDATE processing_jobs SET archive_id = NULL WHERE project_id = (SELECT id FROM projects WHERE project_key = :'pk');
+DELETE FROM archive_pages      WHERE archive_id IN (SELECT id FROM archive_records WHERE project_id = (SELECT id FROM projects WHERE project_key = :'pk'));
+DELETE FROM llm_traces         WHERE archive_id IN (SELECT id FROM archive_records WHERE project_id = (SELECT id FROM projects WHERE project_key = :'pk'));
+DELETE FROM metadata_revisions WHERE archive_id IN (SELECT id FROM archive_records WHERE project_id = (SELECT id FROM projects WHERE project_key = :'pk'));
+DELETE FROM processing_events  WHERE batch_id IN (SELECT id FROM processing_batches WHERE project_id = (SELECT id FROM projects WHERE project_key = :'pk'));
+DELETE FROM export_files       WHERE project_id = (SELECT id FROM projects WHERE project_key = :'pk');
+DELETE FROM sequence_counters  WHERE project_id = (SELECT id FROM projects WHERE project_key = :'pk');
+DELETE FROM archive_records    WHERE project_id = (SELECT id FROM projects WHERE project_key = :'pk');
+DELETE FROM processing_jobs    WHERE project_id = (SELECT id FROM projects WHERE project_key = :'pk');
+DELETE FROM processing_batches WHERE project_id = (SELECT id FROM projects WHERE project_key = :'pk');
+DELETE FROM uploaded_files     WHERE upload_batch_id IN (SELECT id FROM upload_batches WHERE project_id = (SELECT id FROM projects WHERE project_key = :'pk'));
+DELETE FROM upload_batches     WHERE project_id = (SELECT id FROM projects WHERE project_key = :'pk');
+DELETE FROM projects           WHERE project_key = :'pk';
+COMMIT;
+SQL
+```
+
+### 11.4 残留文件清理
+
+数据库删除不会动磁盘。上传原图在各上传批次的 `storage_root`，在线跑批输出在 `output_results/web_runs/batch_<id>/`。删库前先记下路径：
+
+```bash
+docker exec postgres psql -U postgres -d fileforge_current -c "SELECT id, storage_root FROM upload_batches ORDER BY id;"
+```
+
+确认无误后再手动删除对应目录（谨慎):
+
+```bash
+rm -rf /path/to/storage_root
+```
+
