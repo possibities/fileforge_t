@@ -6,9 +6,9 @@
       <h2>{{ archive.title or archive.archive_name }}</h2>
       <p class="muted">{{ archive.archive_key }}{% if archive.archive_no %} · 档号 {{ archive.archive_no }}{% endif %}{% if archive.item_no %} · 件号 {{ archive.item_no }}{% endif %}</p>
       <p class="archive-status-line">
-        <span class="status-badge status-{{ archive.processing_status }}">{{ archive.processing_status }}</span>
-        <span class="status-badge status-{{ archive.review_status }}">{{ archive.review_status }}</span>
-        <span class="status-badge status-{{ archive.correction_status }}">{{ archive.correction_status }}</span>
+        <span class="status-badge status-{{ archive.processing_status }}">{{ archive.processing_status | status_label('processing') }}</span>
+        <span class="status-badge status-{{ archive.review_status }}">{{ archive.review_status | status_label('review') }}</span>
+        <span class="status-badge status-{{ archive.correction_status }}">{{ archive.correction_status | status_label('correction') }}</span>
         {% if archive.llm_parse_strategy %}<span class="muted">解析: {{ archive.llm_parse_strategy }}</span>{% endif %}
         {% if archive.error_code %}<span class="error">{{ archive.error_code }} {{ archive.error_message or "" }}</span>{% endif %}
       </p>

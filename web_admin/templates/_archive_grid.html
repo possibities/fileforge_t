@@ -114,7 +114,7 @@
             <select name="processing_status" data-autosubmit>
               <option value="">全部</option>
               {% for choice in processing_status_choices %}
-              <option value="{{ choice }}"{% if filters.processing_status == choice %} selected{% endif %}>{{ choice }}</option>
+              <option value="{{ choice }}"{% if filters.processing_status == choice %} selected{% endif %}>{{ choice | status_label('processing') }}</option>
               {% endfor %}
             </select>
           </th>
@@ -122,7 +122,7 @@
             <select name="review_status" data-autosubmit>
               <option value="">全部</option>
               {% for choice in review_status_choices %}
-              <option value="{{ choice }}"{% if filters.review_status == choice %} selected{% endif %}>{{ choice }}</option>
+              <option value="{{ choice }}"{% if filters.review_status == choice %} selected{% endif %}>{{ choice | status_label('review') }}</option>
               {% endfor %}
             </select>
           </th>
@@ -141,8 +141,8 @@
           <td class="col-retention_period">{{ archive.retention_period or "" }}</td>
           <td class="col-responsible_party">{{ archive.responsible_party or "" }}</td>
           <td class="col-openness_status">{{ archive.openness_status or "" }}</td>
-          <td class="col-processing_status"><span class="status-badge status-{{ archive.processing_status }}">{{ archive.processing_status }}</span></td>
-          <td class="col-review_status"><span class="status-badge status-{{ archive.review_status }}">{{ archive.review_status }}</span></td>
+          <td class="col-processing_status"><span class="status-badge status-{{ archive.processing_status }}">{{ archive.processing_status | status_label('processing') }}</span></td>
+          <td class="col-review_status"><span class="status-badge status-{{ archive.review_status }}">{{ archive.review_status | status_label('review') }}</span></td>
           <td class="col-page_count">{{ archive.page_count }}</td>
           <td class="col-op">
             <a href="/archives/{{ archive.id }}">详情</a>

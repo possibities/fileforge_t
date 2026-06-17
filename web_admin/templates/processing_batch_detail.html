@@ -14,7 +14,7 @@
   <dt>批次</dt>
   <dd>{{ batch.batch_key }}</dd>
   <dt>状态</dt>
-  <dd><span class="status-badge status-{{ batch.batch_status }}">{{ batch.batch_status }}</span></dd>
+  <dd><span class="status-badge status-{{ batch.batch_status }}">{{ batch.batch_status | status_label('batch') }}</span></dd>
   <dt>输入目录</dt>
   <dd>{{ batch.input_dir or "" }}</dd>
   <dt>输出目录</dt>
@@ -47,7 +47,7 @@
     <tr>
       <td>{{ job.id }}</td>
       <td>{{ job.document_key }}</td>
-      <td><span class="status-badge status-{{ job.status }}">{{ job.status }}</span></td>
+      <td><span class="status-badge status-{{ job.status }}">{{ job.status | status_label('processing') }}</span></td>
       <td>
         <div class="progress-meter" aria-label="进度 {{ job.progress }}%">
           <span style="width: {{ job.progress }}%"></span>

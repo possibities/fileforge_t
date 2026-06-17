@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from web_admin import auth as auth_service
 from web_admin.db import get_session
+from web_admin.status_labels import status_label
 from web_admin.routes import archives as archive_routes
 from web_admin.routes import auth as auth_routes
 from web_admin.routes import organizations as organizations_routes
@@ -64,6 +65,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app = FastAPI(title="FileForge Admin")
     app.state.settings = settings
     app.state.templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    app.state.templates.env.filters["status_label"] = status_label
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     app.include_router(auth_routes.router)

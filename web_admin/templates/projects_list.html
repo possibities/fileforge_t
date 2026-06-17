@@ -40,7 +40,7 @@
       <td><code class="code-pill">{{ project.project_key }}</code></td>
       <td>{{ project.project_name or "" }}</td>
       <td>{{ project.organization_name or "" }}</td>
-      <td><span class="status-badge status-{{ project.status }}">{{ project.status }}</span></td>
+      <td><span class="status-badge status-{{ project.status }}">{{ project.status | status_label('account') }}</span></td>
       <td>{{ project.created_at }}</td>
       <td class="table-actions">
         <a href="/admin/projects/{{ project.id }}/edit">编辑</a>

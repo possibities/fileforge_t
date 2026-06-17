@@ -17,7 +17,7 @@
     <select id="project_key" name="project_key" required{% if not projects %} disabled{% endif %}>
       <option value="">请选择整理项目</option>
       {% for project in projects %}
-      <option value="{{ project.project_key }}"{% if project_key == project.project_key %} selected{% endif %}>{{ project.project_name or project.project_key }}{% if project.project_name %} ({{ project.project_key }}){% endif %}{% if project.status != "active" %} - {{ project.status }}{% endif %}</option>
+      <option value="{{ project.project_key }}"{% if project_key == project.project_key %} selected{% endif %}>{{ project.project_name or project.project_key }}{% if project.project_name %} ({{ project.project_key }}){% endif %}{% if project.status != "active" %} - {{ project.status | status_label('account') }}{% endif %}</option>
       {% endfor %}
     </select>
   </label>
@@ -68,7 +68,7 @@
     <tr>
       <td><code class="code-pill">{{ batch.batch_key }}</code></td>
       <td>{{ batch.batch_name or "" }}</td>
-      <td><span class="status-badge status-{{ batch.batch_status }}">{{ batch.batch_status }}</span></td>
+      <td><span class="status-badge status-{{ batch.batch_status }}">{{ batch.batch_status | status_label('batch') }}</span></td>
       <td>{{ batch.total_archives }}</td>
       <td>{{ batch.total_pages }}</td>
       <td>{{ batch.success_count }}</td>

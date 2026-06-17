@@ -72,7 +72,7 @@
     <tr>
       <td>{{ upload.id }}</td>
       <td>{{ upload.upload_name }}</td>
-      <td><span class="status-badge status-{{ upload.status }}">{{ upload.status }}</span></td>
+      <td><span class="status-badge status-{{ upload.status }}">{{ upload.status | status_label('upload') }}</span></td>
       <td>{{ upload.file_count }}</td>
       <td>{{ upload.document_count }}</td>
       <td class="path-cell">{{ upload.storage_root }}</td>
@@ -84,7 +84,7 @@
           <button type="submit">开始处理</button>
         </form>
         {% else %}
-        <span class="muted">{{ upload.status }}</span>
+        <span class="muted">{{ upload.status | status_label('upload') }}</span>
         {% endif %}
         {% if "archive:delete" in user.permissions %}
         <form method="post" action="/uploads/{{ upload.id }}/delete" style="display:inline" onsubmit="return confirm('确认删除该上传批次及其落盘原图?此操作不可恢复。');">
