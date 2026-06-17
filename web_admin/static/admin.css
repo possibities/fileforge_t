@@ -133,9 +133,15 @@ a:hover {
 }
 
 .page {
-  max-width: 1240px;
+  width: 100%;
+  max-width: 1680px;
   margin: 0 auto;
-  padding: 28px;
+  padding: 28px clamp(20px, 3.5vw, 56px);
+}
+
+/* 数据密集型页面(查询表格 / 审核工作台)铺满整屏,不受 1680 上限约束。 */
+body.page-full .page {
+  max-width: none;
 }
 
 h1,
