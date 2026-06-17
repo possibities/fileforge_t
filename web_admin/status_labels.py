@@ -15,27 +15,28 @@ from typing import Optional
 # 各业务域的专属翻译(优先级高于通用映射)。
 _DOMAIN_LABELS: dict[str, dict[str, str]] = {
     # ArchiveRecord.processing_status / ProcessingJob.status
+    # 多个“进行中”细分状态统一显示为“处理中”,只保留一个“…中”,避免过度细化。
     "processing": {
-        "pending": "等待",
+        "pending": "排队中",
         "queued": "排队中",
         "running": "处理中",
-        "ocr_running": "OCR 识别中",
-        "llm_running": "大模型抽取中",
-        "rules_running": "规则校验中",
-        "exporting": "导出中",
+        "ocr_running": "处理中",
+        "llm_running": "处理中",
+        "rules_running": "处理中",
+        "exporting": "处理中",
         "success": "成功",
         "failed": "失败",
         "cancelled": "已取消",
         "error": "错误",
     },
-    # ArchiveRecord.review_status
+    # ArchiveRecord.review_status —— 统一用“审核”,不再出现“复核”。
     "review": {
-        "pending": "待复核",
-        "needs_review": "需重点核查",
-        "reviewed": "已复核",
-        "not_required": "无需复核",
-        "in_review": "复核中",
-        "confirmed": "已确认",
+        "pending": "待审核",
+        "needs_review": "重点审核",
+        "reviewed": "已审核",
+        "not_required": "无需审核",
+        "in_review": "审核中",
+        "confirmed": "已审核",
     },
     # ArchiveRecord.correction_status
     "correction": {

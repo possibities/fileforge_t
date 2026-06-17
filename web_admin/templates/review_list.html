@@ -5,7 +5,7 @@
   <div>
     <p class="eyebrow">Review</p>
     <h1>待审核档案</h1>
-    <p class="muted">列出已成功处理、尚未人工确认的档案;系统自动标记"需重点核查"的会置顶。共 {{ result.total }} 条</p>
+    <p class="muted">列出已成功处理、尚未人工确认的档案;系统自动标记“重点审核”的会置顶。共 {{ result.total }} 条</p>
   </div>
 </div>
 
@@ -31,7 +31,7 @@
         <td><input type="checkbox" name="archive_id" value="{{ archive.id }}"></td>
         <td>
           {% if archive.review_status == "needs_review" %}
-          <span class="status-badge status-failed">需重点核查</span>
+          <span class="status-badge status-failed">重点审核</span>
           {% else %}
           <span class="muted">待审核</span>
           {% endif %}

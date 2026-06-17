@@ -19,7 +19,6 @@ from processors.exporter import Exporter
 from infrastructure.db import projects as projects_service, queries
 from infrastructure.db.models import (
     CORRECTION_STATUS,
-    REVIEW_STATUS,
     ArchivePage,
     ArchiveRecord,
     ProcessingBatch,
@@ -333,6 +332,9 @@ _SORT_DIRECTIONS = {"asc", "desc"}
 # ocr_running/llm_running 等 job 级分阶段状态,只出现在处理任务上,不会落到档案。
 _ARCHIVE_PROCESSING_STATUS_CHOICES = ("queued", "running", "success", "failed", "error")
 
+# 审核筛选只暴露当前流程在用的 3 个值(legacy 的 not_required/in_review/confirmed 不展示)。
+_ARCHIVE_REVIEW_STATUS_CHOICES = ("pending", "needs_review", "reviewed")
+
 # 实体分类号可选值:2020 起新码 + 2020 前旧码,(code, 展示标签) 对。
 _CLASSIFICATION_CODE_CHOICES = (
     [(code, f"{code} · {name}") for name, code in CODE_NEW.items()]
@@ -526,7 +528,7 @@ def _render_archive_search(
             "state_params": state_params,
             "processing_status_choices": list(_ARCHIVE_PROCESSING_STATUS_CHOICES),
             "classification_code_choices": _CLASSIFICATION_CODE_CHOICES,
-            "review_status_choices": list(REVIEW_STATUS),
+            "review_status_choices": list(_ARCHIVE_REVIEW_STATUS_CHOICES),
             "correction_status_choices": list(CORRECTION_STATUS),
             "openness_status_choices": ["开放", "控制"],
             "retention_period_choices": list(RETENTION_PERIOD_CHOICES),

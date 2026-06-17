@@ -51,7 +51,7 @@
           ("archive_year","年度"),("classification_code","分类号"),
           ("retention_period","保管期限"),("responsible_party","责任者"),
           ("openness_status","开放"),("processing_status","处理状态"),
-          ("review_status","复核"),("page_count","页数") ] %}
+          ("review_status","审核"),("page_count","页数") ] %}
         <label class="col-toggle-item"><input type="checkbox" data-col="{{ key }}" checked> {{ label }}</label>
         {% endfor %}
       </div>
@@ -76,7 +76,7 @@
           <th class="col-responsible_party">{{ sortable("responsible_party","责任者") }}</th>
           <th class="col-openness_status">{{ sortable("openness_status","开放") }}</th>
           <th class="col-processing_status">{{ sortable("processing_status","处理状态") }}</th>
-          <th class="col-review_status">{{ sortable("review_status","复核") }}</th>
+          <th class="col-review_status">{{ sortable("review_status","审核") }}</th>
           <th class="col-page_count">{{ sortable("page_count","页数") }}</th>
           <th class="col-op">操作</th>
         </tr>
