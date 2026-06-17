@@ -465,6 +465,41 @@ class TestArchiveQueryRoutes(unittest.TestCase):
             )
         self.assertNotIn("春风行动简报", resp3.text)
 
+    def test_review_workstation_renders_saves_and_done(self):
+        with self.Session() as session:
+            session.get(ArchiveRecord, self.archive_spring_id).review_status = "needs_review"
+            session.commit()
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get(f"/review/{self.archive_spring_id}")
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("审核处理", resp.text)
+            self.assertIn("page_001.jpg", resp.text)  # 中间图像
+            csrf = client.cookies.get("fileforge_csrf") or ""
+            resp2 = client.post(
+                f"/review/{self.archive_spring_id}/save",
+                data={
+                    "title": "新题名X",
+                    "responsible_party": "某单位",
+                    "classification_code": "DQL",
+                    "retention_period": "永久",
+                    "reason": "",
+                    "csrf_token": csrf,
+                },
+                follow_redirects=False,
+            )
+            self.assertIn(resp2.status_code, {302, 303})
+            resp3 = client.post(
+                f"/review/{self.archive_spring_id}/done",
+                data={"csrf_token": csrf},
+                follow_redirects=False,
+            )
+            self.assertIn(resp3.status_code, {302, 303})
+        with self.Session() as session:
+            ar = session.get(ArchiveRecord, self.archive_spring_id)
+            self.assertEqual(ar.title, "新题名X")
+            self.assertEqual(ar.review_status, "reviewed")
+
     # ── 删除档案 / 批次 ────────────────────────────────────────────────────
     def test_delete_archive_success_removes_record_pages_and_audits(self):
         from infrastructure.db.models import AuditLog

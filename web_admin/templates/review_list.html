@@ -42,7 +42,7 @@
         <td>{{ archive.archive_year or "" }}</td>
         <td>{{ archive.classification_code or "" }}</td>
         <td>{{ archive.retention_period or "" }}</td>
-        <td><a href="/archives/{{ archive.id }}">详情</a></td>
+        <td><a href="/review/{{ archive.id }}">处理</a></td>
       </tr>
       {% else %}
       <tr>

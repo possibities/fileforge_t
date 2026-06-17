@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}审核处理 - FileForge 管理后台{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="eyebrow">Review Workstation</p>
+    <h1>审核处理</h1>
+    <p class="muted">{{ archive.archive_key }}{% if archive.archive_no %} · 档号 {{ archive.archive_no }}{% endif %}</p>
+  </div>
+  <a class="button-link" href="/review">返回审核列表</a>
+</div>
+
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
+{% if error %}<p role="alert">{{ error }}</p>{% endif %}
+
+<div class="workstation">
+  <aside class="ws-queue">
+    <div class="section-heading"><h2>待审核</h2><span class="muted">{{ queue|length }}</span></div>
+    <ul class="ws-queue-list">
+      {% for q in queue %}
+      <li class="{% if q.id == archive.id %}is-current{% endif %}">
+        <a href="/review/{{ q.id }}">
+          <span class="ws-queue-title">
+            {% if q.review_status == "needs_review" %}<span class="status-badge status-failed">重点</span> {% endif %}{{ q.title or q.archive_name }}
+          </span>
+          <span class="muted">{{ q.archive_no or "" }}</span>
+        </a>
+      </li>
+      {% else %}
+      <li class="empty-state">队列为空</li>
+      {% endfor %}
+    </ul>
+  </aside>
+
+  <main class="ws-images">
+    <div class="section-heading"><h2>页面图像</h2><span class="muted">{{ archive.pages|length }} 页</span></div>
+    {% for page in archive.pages %}
+    <figure class="ws-image">
+      <a href="/archives/{{ archive.id }}/pages/{{ page.id }}/image" target="_blank" rel="noopener">
+        <img src="/archives/{{ archive.id }}/pages/{{ page.id }}/image" alt="{{ page.image_name }}" loading="lazy">
+      </a>
+      <figcaption class="muted">第 {{ page.page_no }} 页 · {{ page.image_name }}</figcaption>
+    </figure>
+    {% else %}
+    <p class="empty-state">暂无页面图像</p>
+    {% endfor %}
+  </main>
+
+  <aside class="ws-meta">
+    <h2>元数据</h2>
+    <form class="stacked-form" method="post" action="/review/{{ archive.id }}/save">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>题名
+        <input type="text" name="title" value="{{ values.title }}" maxlength="500">
+      </label>
+      <label>责任者
+        <input type="text" name="responsible_party" value="{{ values.responsible_party }}" maxlength="200">
+      </label>
+      <label>实体分类号
+        <input type="text" name="classification_code" value="{{ values.classification_code }}" maxlength="32">
+      </label>
+      <label>保管期限
+        <select name="retention_period">
+          {% for c in retention_choices %}
+          <option value="{{ c }}"{% if values.retention_period == c %} selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>修改原因(可选)
+        <input type="text" name="reason" value="{{ values.reason or '' }}" maxlength="500">
+      </label>
+      <button type="submit">保存修改</button>
+    </form>
+
+    <form class="action-form" method="post" action="/review/{{ archive.id }}/done" style="margin-top:12px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit">标记为已审核并处理下一条</button>
+    </form>
+
+    <h3>其他字段(只读)</h3>
+    <dl class="archive-detail-list">
+      {% if archive.final_metadata %}
+      {% for k, v in archive.final_metadata.items() if v not in (None, "", []) and k not in ["题名", "责任者", "实体分类号", "保管期限"] %}
+      <dt>{{ k }}</dt>
+      <dd>{{ v }}</dd>
+      {% endfor %}
+      {% endif %}
+    </dl>
+  </aside>
+</div>
+{% endblock %}

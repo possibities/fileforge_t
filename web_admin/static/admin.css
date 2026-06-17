@@ -963,6 +963,86 @@ dd {
   margin: 6px 0 0;
 }
 
+/* ── 审核工作台(左队列 / 中图像 / 右元数据)──────────────────────────────── */
+.workstation {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 360px;
+  gap: 18px;
+  align-items: start;
+}
+
+.ws-queue,
+.ws-meta {
+  position: sticky;
+  top: 84px;
+  max-height: calc(100vh - 104px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--panel);
+}
+
+.ws-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.ws-queue-list li a {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.ws-queue-list li a:hover {
+  background: var(--panel-soft);
+  text-decoration: none;
+}
+
+.ws-queue-list li.is-current a {
+  background: var(--accent-soft);
+}
+
+.ws-queue-title {
+  color: var(--text);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.ws-images {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ws-image {
+  margin: 0;
+}
+
+.ws-image img {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+@media (max-width: 1100px) {
+  .workstation {
+    grid-template-columns: 1fr;
+  }
+
+  .ws-queue,
+  .ws-meta {
+    position: static;
+    max-height: none;
+  }
+}
+
 .grid-row.is-selected > td {
   background: var(--accent-soft);
 }
