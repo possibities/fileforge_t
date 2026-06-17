@@ -25,7 +25,7 @@
 - **LLM** 从 OCR 文本里抽取业务字段
 - **规则引擎** 校验字段合法性、修正常见 LLM 错误(比如保管期限填错档次、分类号写新码而不是 2020 前的旧码)、补全 LLM 漏填字段
 - **序号生成器** 按"项目→年度→分类→保管期限"四级分组分配单调递增的件号与档号
-- **Web 后台** 支持浏览器上传、后台在线跑批、结果复核和 4 个最易错字段修正,所有上传、处理和修正都可追溯
+- **Web 后台** 支持浏览器上传、后台在线跑批、审核工作台(唯一编辑入口,8 字段)和全局审计,所有上传、处理和修正都可追溯
 
 最终交付物是档案员可以直接导入档案管理系统的 JSON/CSV(中文字段名,字段顺序按 `config/exporter.json` 模板),以及一份可审计的 PostgreSQL 持久化记录。
 
@@ -401,8 +401,8 @@ organizations  ──┐
 | `/batches/{id}/archives` | 档案列表(12 字段过滤) | `archive:view` |
 | `/archives/{id}` | 档案详情(三快照、页面图片) | `archive:view` |
 | `/review/{id}` | 审核工作台(唯一编辑入口,8 字段可改) | `archive:correct` |
-| `/archives/{id}/revisions` | 修订历史 | `archive:view` |
-| `/archives/{id}/audit` | 审计日志 | `audit:view` |
+| `/archives/{id}/revisions` | 修订历史(字段级,挂单档案) | `archive:view` |
+| `/admin/audit` | 全局审计日志(按单位隔离+动作筛选+分页) | `audit:view` |
 
 **内置角色**:
 - `platform_admin` — 平台管理员,全权,跨单位

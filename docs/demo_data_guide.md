@@ -91,7 +91,7 @@ demo_upload.zip
 -> /batches/{id}/archives 查看结果
 -> /review/{id} 工作台修改元数据(题名/责任者/分类号/保管期限/开放状态/年度/文号/立档单位)
 -> /archives/{id}/revisions 查看修订记录
--> /archives/{id}/audit 查看审计日志
+-> /admin/audit 全局审计日志(按动作筛选)
 ```
 
 如果浏览器后台任务中断,可用 CLI 对已上传批次补跑:

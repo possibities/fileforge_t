@@ -129,6 +129,8 @@ vllm serve ~/.cache/huggingface/hub/Qwen3-32B-AWQ \
   --gpu-memory-utilization 0.90
 ```
 
+> 80 GB 的 A100 上 0.90 仍给同卡 PaddleOCR 留有约 8 GB 余量,可支撑小并发跑批;若在显存更小的卡(如 48 GB A6000)上与 OCR 同卡运行,应降到约 0.6,详见 `docs/concurrency_and_capacity.md` 与 `docs/vllm_server.md`。
+
 Detach:`Ctrl-b d`。
 
 健康检查(等启动完成,日志看到 `Uvicorn running on ...` 后):
@@ -371,7 +373,7 @@ export WEB_MAX_UPLOAD_FILES='2000'
 | `/archives/{id}` | 档案详情(三快照、页面图片路径) | `archive:view` |
 | `/review/{id}` | 审核工作台 / 元数据人工修正(8 字段,唯一编辑入口) | `archive:correct` |
 | `/archives/{id}/revisions` | 修订记录 | `archive:view` |
-| `/archives/{id}/audit` | 审计记录 | `audit:view` |
+| `/admin/audit` | 全局审计记录(按单位隔离+动作筛选) | `audit:view` |
 
 ### 10.1 浏览器上传在线跑批
 
