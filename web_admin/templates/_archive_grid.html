@@ -127,7 +127,11 @@
             </select>
           </th>
           <th class="col-page_count"></th>
-          <th class="col-op"></th>
+          <th class="col-op">
+            {% if "archive:delete" in user.permissions %}
+            <label class="grid-select-all"><input type="checkbox" data-select-all> 全选</label>
+            {% endif %}
+          </th>
         </tr>
       </thead>
       <tbody>

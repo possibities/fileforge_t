@@ -172,6 +172,11 @@
 
   document.addEventListener("change", function (ev) {
     var t = ev.target;
+    if (t.matches("[data-select-all]")) {
+      var boxes = document.querySelectorAll(".row-select");
+      for (var i = 0; i < boxes.length; i++) boxes[i].checked = t.checked;
+      return;
+    }
     if (t.matches("[data-col]")) {
       var state = loadColState();
       var key = t.getAttribute("data-col");

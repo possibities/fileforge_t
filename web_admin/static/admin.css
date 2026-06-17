@@ -893,6 +893,27 @@ dd {
   text-overflow: ellipsis;
 }
 
+/* 选择/操作列收窄到内容宽度,把多余横向空间让给文本列。 */
+.archive-grid th.col-op,
+.archive-grid td.col-op {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.archive-grid td.col-op a {
+  margin-right: 6px;
+}
+
+.grid-select-all {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
 /* 冻结表头(两行)+ 冻结首列 */
 .archive-grid thead th {
   position: sticky;
