@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from infrastructure.db import accounts
+from infrastructure.db.models import Organization
 
 from web_admin.auth import CurrentUser
 from web_admin.db import get_session
@@ -128,6 +129,82 @@ def post_new_organization(
     return RedirectResponse(
         url="/admin/organizations",
         status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.get("/{organization_id}/edit")
+def get_organization_edit_form(
+    request: Request,
+    organization_id: int,
+    session: Session = Depends(get_session),
+) -> Response:
+    current_user, error_response = _require_organization_manage(request, session)
+    if error_response is not None:
+        return error_response
+    org = session.get(Organization, organization_id)
+    if org is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    return request.app.state.templates.TemplateResponse(
+        request,
+        "organization_edit.html",
+        {
+            "user": current_user,
+            "org": org,
+            "csrf_token": request.cookies.get("fileforge_csrf", ""),
+            "values": {"name": org.name},
+            "error": None,
+        },
+    )
+
+
+@router.post("/{organization_id}/edit")
+def post_organization_edit(
+    request: Request,
+    organization_id: int,
+    name: Optional[str] = Form(default=None),
+    csrf_token: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+) -> Response:
+    current_user, error_response = _require_organization_manage(request, session)
+    if error_response is not None:
+        return error_response
+    if not verify_csrf_from_request(request, session, csrf_token):
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+
+    org = session.get(Organization, organization_id)
+    if org is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+
+    cleaned = (name or "").strip()
+    cookie_csrf = request.cookies.get("fileforge_csrf", "")
+    error: Optional[str] = None
+    if not cleaned:
+        error = "名称不能为空"
+    elif len(cleaned) > 255:
+        error = "名称长度不能超过 255 字符"
+    if error is None:
+        try:
+            accounts.rename_organization(
+                session, organization_id=organization_id, name=cleaned
+            )
+            session.commit()
+        except ValueError as exc:
+            session.rollback()
+            error = str(exc)
+    if error is not None:
+        return request.app.state.templates.TemplateResponse(
+            request,
+            "organization_edit.html",
+            {
+                "user": current_user,
+                "org": org,
+                "csrf_token": cookie_csrf,
+                "values": {"name": cleaned},
+                "error": error,
+            },
+        )
+    return RedirectResponse(
+        url="/admin/organizations", status_code=status.HTTP_303_SEE_OTHER
     )
 
 

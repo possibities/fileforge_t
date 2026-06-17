@@ -151,9 +151,28 @@ def set_project_status(
     project.status = status
 
 
+def update_project(
+    session: Session,
+    *,
+    project_id: int,
+    project_name: Optional[str] = None,
+    description: Optional[str] = None,
+) -> Project:
+    """更新项目名称/描述(不改 project_key/单位/状态)。不 commit。不存在 → ValueError。"""
+    project = session.get(Project, project_id)
+    if project is None:
+        raise ValueError(f"整理项目不存在: {project_id}")
+    if project_name is not None:
+        project.project_name = (project_name or "").strip() or None
+    if description is not None:
+        project.description = (description or "").strip() or None
+    return project
+
+
 __all__ = [
     "ProjectRow",
     "create_project",
     "list_projects",
     "set_project_status",
+    "update_project",
 ]

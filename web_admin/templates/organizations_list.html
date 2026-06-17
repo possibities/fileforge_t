@@ -22,7 +22,8 @@
       <td>{{ org.name }}</td>
       <td><span class="status-badge status-{{ org.status }}">{{ org.status }}</span></td>
       <td>{{ org.created_at }}</td>
-      <td>
+      <td class="table-actions">
+        <a href="/admin/organizations/{{ org.id }}/edit">编辑</a>
         {% if org.status == "active" %}
         <form method="post" action="/admin/organizations/{{ org.id }}/disable" style="display:inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

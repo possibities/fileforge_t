@@ -43,6 +43,7 @@
       <td><span class="status-badge status-{{ project.status }}">{{ project.status }}</span></td>
       <td>{{ project.created_at }}</td>
       <td class="table-actions">
+        <a href="/admin/projects/{{ project.id }}/edit">编辑</a>
         {% if "batch:manage" in user.permissions and project.status == "active" %}
         <a href="/uploads?project_id={{ project.id }}">上传</a>
         {% endif %}

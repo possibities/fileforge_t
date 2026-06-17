@@ -223,6 +223,25 @@ def set_organization_status(
     org.status = status
 
 
+def rename_organization(session: Session, *, organization_id: int, name: str) -> Organization:
+    """重命名单位。不 commit。空名/重名/不存在 → ValueError。"""
+    clean = (name or "").strip()
+    if not clean:
+        raise ValueError("organization name is required")
+    org = session.get(Organization, organization_id)
+    if org is None:
+        raise ValueError(f"organization 不存在: {organization_id}")
+    dup = session.scalar(
+        select(Organization).where(
+            Organization.name == clean, Organization.id != organization_id
+        )
+    )
+    if dup is not None:
+        raise ValueError(f"organization already exists: {clean}")
+    org.name = clean
+    return org
+
+
 def _validate_role_code(code: str) -> str:
     clean = (code or "").strip()
     if clean not in APP_USER_ROLE:
@@ -362,6 +381,7 @@ __all__ = [
     "create_organization",
     "list_organizations",
     "set_organization_status",
+    "rename_organization",
     "create_user",
     "list_users",
     "authenticate_user",

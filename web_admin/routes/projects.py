@@ -238,6 +238,98 @@ def post_new_project(
     )
 
 
+@router.get("/{project_id}/edit")
+def get_project_edit_form(
+    request: Request,
+    project_id: int,
+    session: Session = Depends(get_session),
+) -> Response:
+    current_user, error_response = _require_project_manage(request, session)
+    if error_response is not None:
+        return error_response
+    project = session.get(Project, project_id)
+    if project is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    if (
+        not has_platform_scope(current_user)
+        and project.organization_id != current_user.organization_id
+    ):
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    return request.app.state.templates.TemplateResponse(
+        request,
+        "project_edit.html",
+        {
+            "user": current_user,
+            "project": project,
+            "csrf_token": request.cookies.get("fileforge_csrf", ""),
+            "values": {
+                "project_name": project.project_name or "",
+                "description": project.description or "",
+            },
+            "error": None,
+        },
+    )
+
+
+@router.post("/{project_id}/edit")
+def post_project_edit(
+    request: Request,
+    project_id: int,
+    project_name: Optional[str] = Form(default=None),
+    description: Optional[str] = Form(default=None),
+    csrf_token: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+) -> Response:
+    current_user, error_response = _require_project_manage(request, session)
+    if error_response is not None:
+        return error_response
+    if not verify_csrf_from_request(request, session, csrf_token):
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+    project = session.get(Project, project_id)
+    if project is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    if (
+        not has_platform_scope(current_user)
+        and project.organization_id != current_user.organization_id
+    ):
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+
+    clean_name = (project_name or "").strip()
+    clean_desc = (description or "").strip()
+    error: Optional[str] = None
+    if len(clean_name) > 255:
+        error = "整理项目名称长度不能超过 255 字符"
+    elif len(clean_desc) > 1000:
+        error = "描述长度不能超过 1000 字符"
+    if error is None:
+        try:
+            projects_service.update_project(
+                session,
+                project_id=project_id,
+                project_name=clean_name,
+                description=clean_desc,
+            )
+            session.commit()
+        except ValueError as exc:
+            session.rollback()
+            error = str(exc)
+    if error is not None:
+        return request.app.state.templates.TemplateResponse(
+            request,
+            "project_edit.html",
+            {
+                "user": current_user,
+                "project": project,
+                "csrf_token": request.cookies.get("fileforge_csrf", ""),
+                "values": {"project_name": clean_name, "description": clean_desc},
+                "error": error,
+            },
+        )
+    return RedirectResponse(
+        url="/admin/projects", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
 @router.post("/{project_id}/disable")
 def post_disable_project(
     request: Request,

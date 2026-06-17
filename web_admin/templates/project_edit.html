@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}编辑整理项目 - FileForge 管理后台{% endblock %}
+{% block content %}
+<h1>编辑整理项目</h1>
+
+{% if error %}
+<p class="error">{{ error }}</p>
+{% endif %}
+
+<section class="panel form-panel">
+  <form class="stacked-form" method="post" action="/admin/projects/{{ project.id }}/edit">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <p class="notice">项目标识 <code class="code-pill">{{ project.project_key }}</code> 与所属单位不可修改。</p>
+    <label for="project_name">
+      整理项目名称
+      <input type="text" id="project_name" name="project_name" value="{{ values.project_name or '' }}" maxlength="255">
+    </label>
+    <label for="description">
+      描述
+      <textarea id="description" name="description" rows="3" maxlength="1000">{{ values.description or '' }}</textarea>
+    </label>
+    <div class="form-actions">
+      <button type="submit">保存</button>
+      <a class="button-link" href="/admin/projects">取消</a>
+    </div>
+  </form>
+</section>
+{% endblock %}
