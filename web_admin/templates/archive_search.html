@@ -18,19 +18,7 @@
   {% endif %}
 </div>
 
-<div class="archive-workspace" data-grid-root>
-  <section class="archive-grid-pane" id="archive-grid-pane">
-    {% include "_archive_grid.html" %}
-  </section>
-
-  <aside class="archive-detail-pane" id="detail-pane" aria-label="档案详情">
-    {% if panel_archive %}
-      {% with archive = panel_archive, compact = true %}
-      {% include "_archive_panel.html" %}
-      {% endwith %}
-    {% else %}
-    <div class="detail-pane-empty empty-state">在左侧点击任意一行,这里显示档案详情与页面图像。</div>
-    {% endif %}
-  </aside>
-</div>
+<section class="archive-grid-pane" id="archive-grid-pane">
+  {% include "_archive_grid.html" %}
+</section>
 {% endblock %}

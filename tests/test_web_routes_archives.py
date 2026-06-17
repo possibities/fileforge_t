@@ -378,30 +378,17 @@ class TestArchiveQueryRoutes(unittest.TestCase):
             resp = client.get("/archives", params={"page_size": "999"})
         self.assertEqual(resp.status_code, 400)
 
-    def test_global_search_selected_renders_panel_inline(self):
-        with TestClient(self.app) as client:
-            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
-            resp = client.get(
-                "/archives", params={"selected": self.archive_spring_id}
-            )
-        self.assertEqual(resp.status_code, 200)
-        self.assertIn("整编完成-FM标记", resp.text)
-        self.assertIn(
-            f"/archives/{self.archive_spring_id}/pages/{self.archive_spring_page_id}/image",
-            resp.text,
-        )
-
-    def test_global_search_selected_other_org_ignored(self):
+    def test_global_search_selected_param_is_ignored(self):
+        # 查询页已去掉同页预览;selected 参数被忽略,仍正常返回列表。
         with TestClient(self.app) as client:
             self._login(client, OPERATOR_USERNAME, OPERATOR_PASSWORD)
             resp = client.get(
                 "/archives", params={"selected": self.archive_other_org_id}
             )
         self.assertEqual(resp.status_code, 200)
-        # 越权选中被忽略:不渲染他单位档案的详情片段。
         self.assertNotIn("乙单位文件", resp.text)
 
-    # ── 详情片段(主从右栏)────────────────────────────────────────────────
+    # ── 详情片段(/archives/{id}/panel)────────────────────────────────────
     def test_archive_panel_fragment_renders_without_chrome(self):
         with TestClient(self.app) as client:
             self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)

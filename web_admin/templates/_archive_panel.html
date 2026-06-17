@@ -1,10 +1,17 @@
-{# 档案详情片段:被 /archives/{id}/panel(主从右栏)与 archive_detail.html 复用。 #}
+{# 档案详情片段:被 archive_detail.html(整页)与 /archives/{id}/panel 复用。 #}
 {# 需要上下文:archive(ArchiveDetail)、user;compact=true 时为窄栏单列布局。 #}
 <div class="archive-panel{% if compact %} archive-panel--compact{% endif %}">
   <div class="archive-panel-head">
     <div class="archive-panel-heading">
       <h2>{{ archive.title or archive.archive_name }}</h2>
       <p class="muted">{{ archive.archive_key }}{% if archive.archive_no %} · 档号 {{ archive.archive_no }}{% endif %}{% if archive.item_no %} · 件号 {{ archive.item_no }}{% endif %}</p>
+      <p class="archive-status-line">
+        <span class="status-badge status-{{ archive.processing_status }}">{{ archive.processing_status }}</span>
+        <span class="status-badge status-{{ archive.review_status }}">{{ archive.review_status }}</span>
+        <span class="status-badge status-{{ archive.correction_status }}">{{ archive.correction_status }}</span>
+        {% if archive.llm_parse_strategy %}<span class="muted">解析: {{ archive.llm_parse_strategy }}</span>{% endif %}
+        {% if archive.error_code %}<span class="error">{{ archive.error_code }} {{ archive.error_message or "" }}</span>{% endif %}
+      </p>
     </div>
     <div class="table-actions">
       {% if compact %}<a class="button-link" href="/archives/{{ archive.id }}">完整详情</a>{% endif %}
@@ -20,41 +27,7 @@
 
   <div class="archive-detail-layout">
     <main class="archive-detail-main">
-      <h3>档案信息</h3>
-      <dl class="archive-detail-list">
-        <dt>档案 Key</dt>
-        <dd>{{ archive.archive_key }}</dd>
-        <dt>档案名称</dt>
-        <dd>{{ archive.archive_name }}</dd>
-        <dt>题名</dt>
-        <dd>{{ archive.title or "" }}</dd>
-        <dt>档号 / 件号</dt>
-        <dd>{{ archive.archive_no or "" }} / {{ archive.item_no or "" }}</dd>
-        <dt>年度</dt>
-        <dd>{{ archive.archive_year or "" }}</dd>
-        <dt>分类</dt>
-        <dd>{{ archive.classification_code or "" }} {{ archive.classification_name or "" }}</dd>
-        <dt>保管期限</dt>
-        <dd>{{ archive.retention_period or "" }} {{ archive.retention_period_code or "" }}</dd>
-        <dt>责任者</dt>
-        <dd>{{ archive.responsible_party or "" }}</dd>
-        <dt>文件日期</dt>
-        <dd>{{ archive.document_date or "" }}</dd>
-        <dt>开放状态</dt>
-        <dd>{{ archive.openness_status or "" }}</dd>
-        <dt>处理状态</dt>
-        <dd><span class="status-badge status-{{ archive.processing_status }}">{{ archive.processing_status }}</span></dd>
-        <dt>审核状态</dt>
-        <dd><span class="status-badge status-{{ archive.review_status }}">{{ archive.review_status }}</span></dd>
-        <dt>修正状态</dt>
-        <dd><span class="status-badge status-{{ archive.correction_status }}">{{ archive.correction_status }}</span></dd>
-        <dt>解析策略</dt>
-        <dd>{{ archive.llm_parse_strategy or "" }}</dd>
-        <dt>错误</dt>
-        <dd>{{ archive.error_code or "" }} {{ archive.error_message or "" }}</dd>
-      </dl>
-
-      <h3>其他元数据</h3>
+      <h3>档案元数据</h3>
       {% set extra_rows = [] %}
       {% if archive.final_metadata %}
         {% for key, value in archive.final_metadata.items() if value not in (None, "", []) %}
@@ -79,7 +52,7 @@
         </tbody>
       </table>
       {% else %}
-      <p class="muted">无更多元数据。</p>
+      <p class="muted">暂无元数据(可能处理失败,见上方状态)。</p>
       {% endif %}
     </main>
 

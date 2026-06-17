@@ -955,8 +955,12 @@ dd {
   color: var(--accent);
 }
 
-.grid-row {
-  cursor: pointer;
+.archive-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 6px 0 0;
 }
 
 .grid-row.is-selected > td {

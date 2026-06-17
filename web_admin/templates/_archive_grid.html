@@ -4,10 +4,9 @@
 {% endmacro %}
 
 <form class="archive-grid-form" id="archive-grid-form" method="get" action="{{ path }}">
-  {# 提交时保留排序与选中态;过滤改变时 page 省略 → 回到第 1 页。 #}
+  {# 提交时保留排序;过滤改变时 page 省略 → 回到第 1 页。 #}
   <input type="hidden" name="sort" value="{{ sort_field }}">
   <input type="hidden" name="dir" value="{{ sort_dir }}">
-  {% if selected_id %}<input type="hidden" name="selected" value="{{ selected_id }}">{% endif %}
 
   <div class="grid-toolbar">
     {% if not scope_locked %}
@@ -133,7 +132,7 @@
       </thead>
       <tbody>
         {% for archive in result.items %}
-        <tr class="grid-row{% if selected_id == archive.id %} is-selected{% endif %}" data-archive-id="{{ archive.id }}">
+        <tr class="grid-row">
           <td class="col-archive_no">{{ archive.archive_no or "" }}</td>
           <td class="col-item_no">{{ archive.item_no or "" }}</td>
           <td class="col-title">{{ archive.title or archive.archive_name }}</td>
@@ -146,7 +145,7 @@
           <td class="col-review_status"><span class="status-badge status-{{ archive.review_status }}">{{ archive.review_status }}</span></td>
           <td class="col-page_count">{{ archive.page_count }}</td>
           <td class="col-op">
-            <a class="row-open" href="{{ path }}?{{ row_base_qs }}{% if row_base_qs %}&{% endif %}selected={{ archive.id }}" data-archive-id="{{ archive.id }}">详情</a>
+            <a href="/archives/{{ archive.id }}">详情</a>
             {% if "archive:delete" in user.permissions %}
             <input type="checkbox" class="row-select" value="{{ archive.id }}" title="选择以批量删除">
             {% endif %}

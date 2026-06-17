@@ -372,7 +372,7 @@ def _render_archive_search(
     """渲染共享的档案检索表格(全局 /archives 与按批次 /batches/{id}/archives 共用)。
 
     scope_locked=True 时项目/批次被锁定(批次视图),否则展示项目/批次下拉。
-    所有排序/过滤/分页/选中态都走 query string,服务端渲染;右栏详情由 selected 决定。
+    所有排序/过滤/分页都走 query string,服务端渲染;点击行直接进入档案详情页。
     """
     query = request.query_params
 
@@ -408,22 +408,6 @@ def _render_archive_search(
     except ValueError as exc:
         return _bad_request(exc)
 
-    # 选中档案 → 右栏详情;组织越权或不存在则忽略选中态。
-    selected_id = None
-    selected_raw = _clean_optional_str(query.get("selected"))
-    if selected_raw:
-        try:
-            selected_id = int(selected_raw)
-        except ValueError:
-            selected_id = None
-    panel_archive = None
-    if selected_id is not None:
-        record = session.get(ArchiveRecord, selected_id)
-        if record is not None and _can_access_archive(session, current_user, record) is not None:
-            panel_archive = queries.get_archive_detail(session, archive_id=selected_id)
-        else:
-            selected_id = None
-
     filters = {
         name: (query.get(name) or "").strip()
         for name in (
@@ -434,7 +418,7 @@ def _render_archive_search(
         )
     }
 
-    # 链接构造:保留 scope(全局视图)+ 已应用过滤 + page_size + 选中态。
+    # 链接构造:保留 scope(全局视图)+ 已应用过滤 + page_size。
     base_params: dict = {}
     if not scope_locked:
         if project_key:
@@ -445,8 +429,6 @@ def _render_archive_search(
         if value:
             base_params[name] = value
     base_params["page_size"] = page_size_num
-    if selected_id is not None:
-        base_params["selected"] = selected_id
 
     def _url(**overrides) -> str:
         merged = dict(base_params)
@@ -486,12 +468,11 @@ def _render_archive_search(
     export_qs = urlencode(export_params)
     export_url = "/archives/export.csv" + (f"?{export_qs}" if export_qs else "")
 
-    # 整套当前状态(除 page),供跳页表单的隐藏域 / 行链接复用。
+    # 整套当前状态(除 page),供跳页表单的隐藏域复用。
     state_params = dict(base_params)
     if sort_field:
         state_params["sort"] = sort_field
         state_params["dir"] = sort_dir
-    row_base_qs = urlencode({k: v for k, v in state_params.items() if k != "selected"})
 
     projects = _available_projects(session, current_user) if not scope_locked else []
     batches = []
@@ -538,9 +519,6 @@ def _render_archive_search(
             "export_url": export_url,
             "csrf_token": request.cookies.get("fileforge_csrf", ""),
             "state_params": state_params,
-            "row_base_qs": row_base_qs,
-            "selected_id": selected_id,
-            "panel_archive": panel_archive,
             "processing_status_choices": list(_ARCHIVE_PROCESSING_STATUS_CHOICES),
             "classification_code_choices": _CLASSIFICATION_CODE_CHOICES,
             "review_status_choices": list(REVIEW_STATUS),

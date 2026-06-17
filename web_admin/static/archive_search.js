@@ -1,21 +1,17 @@
 // 档案查询页:零依赖局部刷新。
-// 筛选/排序/翻页 → 拉取表格片段替换左栏;点行 → 拉取详情片段替换右栏。
+// 筛选/排序/翻页 → 拉取表格片段就地替换;点"详情"直接进入档案详情页。
 // 全部走事件委托,挂在 document 上,DOM 片段被替换后无需重新绑定。
 // 渐进增强:无 JS 时表单照常整页提交、链接照常跳转,功能不丢。
 (function () {
   "use strict";
 
   var GRID_PANE = "archive-grid-pane";
-  var DETAIL_PANE = "detail-pane";
   var COLS_KEY = "ff_archive_cols";
   var FETCH_HEADERS = { "X-Requested-With": "fetch" };
   var inputTimer = null;
 
   function gridPane() {
     return document.getElementById(GRID_PANE);
-  }
-  function detailPane() {
-    return document.getElementById(DETAIL_PANE);
   }
   function filterForm() {
     return document.getElementById("archive-grid-form");
@@ -112,61 +108,6 @@
     return form.getAttribute("action") + (qs ? "?" + qs : "");
   }
 
-  // ── 主从详情 ─────────────────────────────────────────────────────────────
-  function highlightRow(id) {
-    var rows = document.querySelectorAll("tr.grid-row");
-    for (var i = 0; i < rows.length; i++) {
-      rows[i].classList.toggle(
-        "is-selected",
-        rows[i].getAttribute("data-archive-id") === String(id)
-      );
-    }
-  }
-  function syncSelectedParam(id) {
-    // 同步 URL 与筛选表单隐藏域,使后续刷新保留选中态。
-    try {
-      var url = new URL(window.location.href);
-      url.searchParams.set("selected", id);
-      window.history.replaceState({}, "", url.toString());
-    } catch (e) {
-      /* 忽略 */
-    }
-    var form = filterForm();
-    if (form) {
-      var hidden = form.querySelector('input[name="selected"]');
-      if (!hidden) {
-        hidden = document.createElement("input");
-        hidden.type = "hidden";
-        hidden.name = "selected";
-        form.appendChild(hidden);
-      }
-      hidden.value = id;
-    }
-  }
-  function openPanel(id) {
-    var pane = detailPane();
-    if (!pane) return;
-    pane.classList.add("is-loading");
-    fetch("/archives/" + encodeURIComponent(id) + "/panel", {
-      headers: FETCH_HEADERS,
-      credentials: "same-origin",
-    })
-      .then(function (resp) {
-        if (!resp.ok) throw new Error("panel " + resp.status);
-        return resp.text();
-      })
-      .then(function (html) {
-        pane.innerHTML = html;
-        pane.classList.remove("is-loading");
-        highlightRow(id);
-        syncSelectedParam(id);
-      })
-      .catch(function () {
-        pane.classList.remove("is-loading");
-        window.location.href = "/archives/" + encodeURIComponent(id);
-      });
-  }
-
   // ── 批量删除:收集勾选行,构造一次性 POST 表单提交 ───────────────────────
   function submitBulkDelete(button) {
     var checked = document.querySelectorAll(".row-select:checked");
@@ -213,20 +154,8 @@
     if (nav && gridPane() && gridPane().contains(nav)) {
       ev.preventDefault();
       loadGrid(nav.getAttribute("href"), true);
-      return;
     }
-    // 勾选框/标签点击不触发行预览
-    if (ev.target.closest("input, label")) return;
-    var row = ev.target.closest("tr.grid-row");
-    if (row) {
-      var link = ev.target.closest("a");
-      if (link && !link.classList.contains("row-open")) return; // 放行其它真实链接
-      var id = row.getAttribute("data-archive-id");
-      if (id) {
-        ev.preventDefault();
-        openPanel(id);
-      }
-    }
+    // 行内"详情"链接是普通 <a>,直接跳转到档案详情页,无需 JS 拦截。
   });
 
   document.addEventListener("submit", function (ev) {
