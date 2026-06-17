@@ -10,7 +10,7 @@ from dataclasses import dataclass, fields
 from datetime import datetime
 from typing import Any, Generic, Iterable, Optional, TypeVar
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, case, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from .models import (
@@ -667,6 +667,48 @@ def export_archive_metadata(
     return [dict(r.final_metadata or {}) for r in rows]
 
 
+def verification_queue(
+    session: Session,
+    *,
+    organization_id: Optional[int] = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> "ListResult[ArchiveSummary]":
+    """待审核队列:已成功处理且尚未标记 reviewed 的档案。
+
+    系统自动标记的 needs_review(需重点核查)置顶,其余按档号。组织隔离同 search。
+    """
+    _validate_pagination(page, page_size)
+    base = _archive_search_base(
+        filter=None,
+        organization_id=organization_id,
+        project_key=None,
+        batch_id=None,
+    ).where(
+        ArchiveRecord.processing_status == "success",
+        ArchiveRecord.review_status != "reviewed",
+    )
+    total = session.scalar(select(func.count()).select_from(base.subquery())) or 0
+    priority = case((ArchiveRecord.review_status == "needs_review", 0), else_=1)
+    rows = session.scalars(
+        _paginate(
+            base.order_by(
+                priority,
+                ArchiveRecord.archive_no.asc().nullslast(),
+                ArchiveRecord.id.asc(),
+            ),
+            page=page,
+            page_size=page_size,
+        )
+    ).all()
+    return _build_list_result(
+        items=[_archive_to_summary(ar) for ar in rows],
+        total=int(total),
+        page=page,
+        page_size=page_size,
+    )
+
+
 def _page_to_dataclass(p: ArchivePageModel) -> ArchivePage:
     return ArchivePage(
         id=p.id,
@@ -981,6 +1023,7 @@ __all__ = [
     "list_archives",
     "search_archives",
     "export_archive_metadata",
+    "verification_queue",
     "ARCHIVE_SORT_FIELDS",
     "get_archive_detail",
     "list_revisions",

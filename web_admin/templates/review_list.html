@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}验证(待复核) - FileForge 管理后台{% endblock %}
+{% block title %}审核 - FileForge 管理后台{% endblock %}
 {% block content %}
 <div class="page-header">
   <div>
-    <p class="eyebrow">Review Queue</p>
-    <h1>验证(待复核)</h1>
-    <p class="muted">列出需要人工复核的档案(简报题名二次重写失败等会标记到这里),共 {{ result.total }} 条</p>
+    <p class="eyebrow">Review</p>
+    <h1>待审核档案</h1>
+    <p class="muted">列出已成功处理、尚未人工确认的档案;系统自动标记"需重点核查"的会置顶。共 {{ result.total }} 条</p>
   </div>
 </div>
 
@@ -15,6 +15,7 @@
     <thead>
       <tr>
         <th>选择</th>
+        <th>优先级</th>
         <th>档号</th>
         <th>题名</th>
         <th>责任者</th>
@@ -28,6 +29,13 @@
       {% for archive in result.items %}
       <tr>
         <td><input type="checkbox" name="archive_id" value="{{ archive.id }}"></td>
+        <td>
+          {% if archive.review_status == "needs_review" %}
+          <span class="status-badge status-failed">需重点核查</span>
+          {% else %}
+          <span class="muted">待审核</span>
+          {% endif %}
+        </td>
         <td>{{ archive.archive_no or "" }}</td>
         <td>{{ archive.title or archive.archive_name }}</td>
         <td>{{ archive.responsible_party or "" }}</td>
@@ -38,13 +46,13 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="8" class="empty-state">没有待复核的档案 🎉</td>
+        <td colspan="9" class="empty-state">没有待审核的档案 🎉</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% if result.items %}
-  <button type="submit">标记选中为已复核</button>
+  <button type="submit">标记选中为已审核</button>
   {% endif %}
 </form>
 

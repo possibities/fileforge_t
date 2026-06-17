@@ -20,7 +20,7 @@
       <a href="/archives" class="{% if archives_active %}active{% endif %}"{% if archives_active %} aria-current="page"{% endif %}>档案</a>
       {% if "archive:correct" in user.permissions %}
       {% set review_active = current_path.startswith('/review') %}
-      <a href="/review" class="{% if review_active %}active{% endif %}"{% if review_active %} aria-current="page"{% endif %}>验证</a>
+      <a href="/review" class="{% if review_active %}active{% endif %}"{% if review_active %} aria-current="page"{% endif %}>审核</a>
       {% endif %}
       {% if "batch:manage" in user.permissions %}
       {% set uploads_active = current_path.startswith('/uploads') %}

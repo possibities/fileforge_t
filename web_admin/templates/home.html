@@ -21,18 +21,20 @@
 <nav class="action-grid" aria-label="后台入口">
   <a class="action-link primary" href="/archives">
     <strong>档案查询</strong>
-    <span>跨批次检索 + 同页预览</span>
+    <span>跨批次检索档案</span>
   </a>
+  {% if "archive:correct" in user.permissions %}
+  <a class="action-link" href="/review">
+    <strong>待审核</strong>
+    <span>核对 AI 结果并确认</span>
+  </a>
+  {% endif %}
   {% if "batch:manage" in user.permissions %}
   <a class="action-link" href="/uploads">
     <strong>上传跑批</strong>
     <span>创建上传批次</span>
   </a>
   {% endif %}
-  <a class="action-link" href="/batches">
-    <strong>批次查询</strong>
-    <span>查看处理记录</span>
-  </a>
   {% if "project:manage" in user.permissions %}
   <a class="action-link" href="/admin/projects">
     <strong>整理项目</strong>

@@ -1200,9 +1200,8 @@ def review_queue(
     except ValueError as exc:
         return _bad_request(exc)
 
-    result = queries.search_archives(
+    result = queries.verification_queue(
         session,
-        filter=queries.ArchiveFilter(review_status=["needs_review"]),
         organization_id=_scoped_organization_id(current_user),
         page=page_num,
         page_size=50,
