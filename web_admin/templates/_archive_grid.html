@@ -80,7 +80,14 @@
           <th class="col-item_no"><input type="text" name="item_no" value="{{ filters.item_no }}" data-autosubmit placeholder="筛选"></th>
           <th class="col-title"><input type="text" name="title_like" value="{{ filters.title_like }}" data-autosubmit placeholder="包含"></th>
           <th class="col-archive_year"><input type="text" name="archive_year" value="{{ filters.archive_year }}" data-autosubmit placeholder="年度"></th>
-          <th class="col-classification_code"><input type="text" name="classification_code" value="{{ filters.classification_code }}" data-autosubmit placeholder="分类号"></th>
+          <th class="col-classification_code">
+            <select name="classification_code" data-autosubmit>
+              <option value="">全部</option>
+              {% for code, label in classification_code_choices %}
+              <option value="{{ code }}"{% if filters.classification_code == code %} selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </th>
           <th class="col-retention_period">
             <select name="retention_period" data-autosubmit>
               <option value="">全部</option>

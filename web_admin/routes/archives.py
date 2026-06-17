@@ -11,10 +11,10 @@ from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from constants import CODE_NEW, CODE_OLD
 from infrastructure.db import projects as projects_service, queries
 from infrastructure.db.models import (
     CORRECTION_STATUS,
-    PROCESSING_STATUS,
     REVIEW_STATUS,
     ArchivePage,
     ArchiveRecord,
@@ -305,6 +305,16 @@ def get_batch_detail(
 
 _SORT_DIRECTIONS = {"asc", "desc"}
 
+# 档案实际可能出现的处理状态(检索筛选下拉用);完整枚举 PROCESSING_STATUS 还含
+# ocr_running/llm_running 等 job 级分阶段状态,只出现在处理任务上,不会落到档案。
+_ARCHIVE_PROCESSING_STATUS_CHOICES = ("queued", "running", "success", "failed", "error")
+
+# 实体分类号可选值:2020 起新码 + 2020 前旧码,(code, 展示标签) 对。
+_CLASSIFICATION_CODE_CHOICES = (
+    [(code, f"{code} · {name}") for name, code in CODE_NEW.items()]
+    + [(code, f"{code} · {name}(2020前)") for name, code in CODE_OLD.items()]
+)
+
 
 def _archive_filter_from_query(query) -> queries.ArchiveFilter:
     """从 query_params 组装 ArchiveFilter;沿用 list 语义的字段用 getlist。"""
@@ -492,7 +502,8 @@ def _render_archive_search(
             "row_base_qs": row_base_qs,
             "selected_id": selected_id,
             "panel_archive": panel_archive,
-            "processing_status_choices": list(PROCESSING_STATUS),
+            "processing_status_choices": list(_ARCHIVE_PROCESSING_STATUS_CHOICES),
+            "classification_code_choices": _CLASSIFICATION_CODE_CHOICES,
             "review_status_choices": list(REVIEW_STATUS),
             "correction_status_choices": list(CORRECTION_STATUS),
             "openness_status_choices": ["开放", "控制"],
