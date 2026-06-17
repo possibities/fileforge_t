@@ -709,6 +709,12 @@ dl {
   min-width: 0;
 }
 
+/* 元数据表格的长值(路径、URL 等)按字符换行,避免撑宽列。 */
+.archive-detail-main td {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .archive-detail-list {
   margin-top: 12px;
 }

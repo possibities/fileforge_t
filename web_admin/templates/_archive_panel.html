@@ -27,7 +27,7 @@
       <h3>档案元数据</h3>
       {% set extra_rows = [] %}
       {% if archive.final_metadata %}
-        {% for key, value in archive.final_metadata.items() if value not in (None, "", []) %}
+        {% for key, value in archive.final_metadata.items() if value not in (None, "", []) and key not in ["source_folder", "processed_time"] %}
           {% set _ = extra_rows.append((key, value)) %}
         {% endfor %}
       {% endif %}

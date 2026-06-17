@@ -102,7 +102,7 @@
     <h3>其他字段(只读)</h3>
     <dl class="archive-detail-list">
       {% if archive.final_metadata %}
-      {% for k, v in archive.final_metadata.items() if v not in (None, "", []) and k not in ["题名", "责任者", "实体分类号", "实体分类名称", "保管期限", "开放状态", "归档年度", "文件编号", "立档单位名称"] %}
+      {% for k, v in archive.final_metadata.items() if v not in (None, "", []) and k not in ["题名", "责任者", "实体分类号", "实体分类名称", "保管期限", "开放状态", "归档年度", "文件编号", "立档单位名称", "source_folder", "processed_time"] %}
       <dt>{{ k }}</dt>
       <dd>{{ v }}</dd>
       {% endfor %}
