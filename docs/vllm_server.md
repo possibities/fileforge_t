@@ -35,6 +35,9 @@ vllm serve ~/.cache/huggingface/hub/Qwen3-32B-AWQ \
 > `--gpu-memory-utilization` 降到 **0.6**(48GB 卡约腾出 14GB)给 OCR 留地方,
 > 即可支撑小并发跑批。代价仅是 KV cache 变小(短文本元数据抽取无感)。
 > 若 vLLM 独占整卡、OCR 走 CPU,则可调回 0.90。
+>
+> 并发模型、显存瓶颈分析与实测容量(A6000 上 4 并发≈4× 吞吐)见
+> [`docs/concurrency_and_capacity.md`](concurrency_and_capacity.md)。
 
 关键参数说明：
 

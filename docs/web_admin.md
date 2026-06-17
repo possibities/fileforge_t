@@ -273,8 +273,8 @@ python -m utils.processing_runner --upload-batch-id 1
 
 ## 9 当前限制
 
-- 在线处理现在使用 FastAPI background task,适合毕业设计演示和小规模使用;生产环境建议替换为独立 worker/队列。
-- Web 在线修正只覆盖 4 个核心字段(题名 / 责任者 / 实体分类号 / 保管期限);其它字段仍走规则重跑或后续扩展。
+- 在线处理现在使用 FastAPI background task,适合毕业设计演示和小规模使用;生产环境建议替换为独立 worker/队列。并发模型、显存瓶颈与实测容量(A6000 上 4 并发≈4× 吞吐)见 [`docs/concurrency_and_capacity.md`](concurrency_and_capacity.md)。
+- Web 在线修正集中在审核工作台 `/review/{id}`(唯一编辑入口),可改 8 个字段(题名 / 责任者 / 实体分类号 / 保管期限 / 开放状态 / 归档年度 / 文件编号 / 立档单位名称;实体分类名称随分类号自动同步);更深字段仍走规则重跑或后续扩展。
 - `档号` / `件号` 由 `SequenceGenerator` 分配,任何时候都不开放手工编辑。
 - 一期修正采用 last-write-wins,无乐观锁;并发提交都会留痕,后到的覆盖 `final_metadata`。
 - 当前页面是服务端渲染 HTML,无前端构建链。档案查询页 `/archives` 额外带一份零依赖原生 JS(`web_admin/static/archive_search.js`),用 `X-Requested-With: fetch` 头请求表格/详情片段做局部刷新;关闭 JS 时表单整页提交、链接整页跳转、`?selected=` 服务端直出右栏,功能不丢。
