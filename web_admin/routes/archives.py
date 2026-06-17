@@ -34,6 +34,7 @@ from infrastructure.db.repositories import (
     apply_manual_correction,
     delete_archive,
     delete_processing_batch,
+    record_audit_log,
 )
 
 from web_admin.auth import CurrentUser
@@ -1135,4 +1136,43 @@ def post_delete_batch(
     return RedirectResponse(
         url=f"/batches?project_key={project_key}",
         status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/archives/{archive_id}/review")
+def post_mark_archive_reviewed(
+    request: Request,
+    archive_id: int,
+    csrf_token: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+) -> Response:
+    """把档案标记为已复核(review_status=reviewed),写审计。需 archive:correct。"""
+    current_user, error_response = _require_archive_correct(request, session)
+    if error_response is not None:
+        return error_response
+    if not verify_csrf_from_request(request, session, csrf_token):
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+
+    archive = session.get(ArchiveRecord, archive_id)
+    if archive is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    if _can_access_archive(session, current_user, archive) is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+
+    old_status = archive.review_status
+    archive.review_status = "reviewed"
+    record_audit_log(
+        session,
+        actor_user_id=current_user.id,
+        organization_id=archive.organization_id,
+        project_id=archive.project_id,
+        action="archive_reviewed",
+        target_type="archive",
+        target_id=archive.id,
+        before_data={"review_status": old_status},
+        after_data={"review_status": "reviewed"},
+    )
+    session.commit()
+    return RedirectResponse(
+        url=f"/archives/{archive_id}", status_code=status.HTTP_303_SEE_OTHER
     )

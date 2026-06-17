@@ -434,6 +434,22 @@ class TestArchiveQueryRoutes(unittest.TestCase):
         lines = [ln for ln in resp.text.splitlines() if ln.strip()]
         self.assertEqual(len(lines), 4)  # 表头 + 3 份档案(平台管理员跨单位可见)
 
+    def test_mark_archive_reviewed(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            csrf = client.cookies.get("fileforge_csrf") or ""
+            resp = client.post(
+                f"/archives/{self.archive_spring_id}/review",
+                data={"csrf_token": csrf},
+                follow_redirects=False,
+            )
+        self.assertIn(resp.status_code, {302, 303})
+        with self.Session() as session:
+            self.assertEqual(
+                session.get(ArchiveRecord, self.archive_spring_id).review_status,
+                "reviewed",
+            )
+
     # ── 删除档案 / 批次 ────────────────────────────────────────────────────
     def test_delete_archive_success_removes_record_pages_and_audits(self):
         from infrastructure.db.models import AuditLog

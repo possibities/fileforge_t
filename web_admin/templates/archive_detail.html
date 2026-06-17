@@ -8,6 +8,12 @@
   </div>
   <div class="table-actions">
     <a class="button-link" href="/archives?selected={{ archive.id }}">返回档案查询</a>
+    {% if "archive:correct" in user.permissions and archive.review_status in ["needs_review", "pending"] %}
+    <form class="action-form" method="post" action="/archives/{{ archive.id }}/review">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit">标记已复核</button>
+    </form>
+    {% endif %}
     {% if "archive:delete" in user.permissions %}
     <form class="action-form" method="post" action="/archives/{{ archive.id }}/delete" onsubmit="return confirm('确认删除该档案及其页面、LLM 轨迹、修订记录?此操作不可恢复。');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
