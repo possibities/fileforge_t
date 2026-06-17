@@ -90,16 +90,7 @@
 2. 首张图片自身的 birthtime
 3. 兜底：当前时间
 
-导出保留字段（见 `constants.EXPORT_RESERVED_FIELDS` 与 `config/exporter.json`）不走 LLM 抽取，但仍随导出输出，需要在数据库侧体现：
-
-| metadata key | 数据库列建议 | 说明 |
-| --- | --- | --- |
-| `全宗号` | `fonds_code` | 下游模板占位，默认 NULL |
-| `档案馆代码` | `archive_house_code` | 当前规则强制置空，下游模板占位 |
-| `档案馆名称` | `archive_house_name` | 当前规则强制置空，下游模板占位 |
-| `外包单位名称` | `outsourcing_unit_name` | 下游模板占位，默认 NULL |
-
-实现侧两条路均可：把这四个字段冗余成独立列；或仅依赖 `final_metadata` JSONB 携带，导出时由模板从 JSONB 取值。一期建议至少在 JSONB 快照中保留，避免导出回退时缺列。
+> 注：早期版本曾保留四个不走 LLM 抽取的导出占位字段（`全宗号`、`档案馆代码`、`档案馆名称`、`外包单位名称`）。这些字段始终为空、本系统档号也不含全宗号，已统一下线——从 `constants`、规则引擎、`config/exporter.json` 与前端移除，数据库侧不再需要为其预留列。
 
 数据库可以用英文列支持高频查询，但必须保留完整中文 metadata JSONB 快照，避免导出字段和历史 JSON 兼容性丢失。
 
