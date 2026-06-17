@@ -269,6 +269,21 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.action-form {
+  display: inline;
+  margin: 0;
+}
+
+button.danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
+}
+
+button.danger:hover {
+  background: #8f1c14;
+}
+
 button.secondary,
 .button-link {
   border: 1px solid var(--line-strong);

@@ -86,6 +86,12 @@
         {% else %}
         <span class="muted">{{ upload.status }}</span>
         {% endif %}
+        {% if "archive:delete" in user.permissions %}
+        <form method="post" action="/uploads/{{ upload.id }}/delete" style="display:inline" onsubmit="return confirm('确认删除该上传批次及其落盘原图?此操作不可恢复。');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="danger">删除</button>
+        </form>
+        {% endif %}
         {% if upload.error_message %}
         <div class="error">{{ upload.error_message }}</div>
         {% endif %}

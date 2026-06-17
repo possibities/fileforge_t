@@ -9,7 +9,7 @@ import unittest
 
 try:
     from fastapi.testclient import TestClient
-    from sqlalchemy import create_engine
+    from sqlalchemy import create_engine, select
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import StaticPool
 
@@ -421,6 +421,100 @@ class TestArchiveQueryRoutes(unittest.TestCase):
                 follow_redirects=False,
             )
         self.assertEqual(resp.status_code, 404)
+
+    # ── 删除档案 / 批次 ────────────────────────────────────────────────────
+    def test_delete_archive_success_removes_record_pages_and_audits(self):
+        from infrastructure.db.models import AuditLog
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            csrf = client.cookies.get("fileforge_csrf") or ""
+            resp = client.post(
+                f"/archives/{self.archive_spring_id}/delete",
+                data={"csrf_token": csrf},
+                follow_redirects=False,
+            )
+        self.assertIn(resp.status_code, {302, 303})
+        self.assertEqual(resp.headers["location"], "/archives")
+        with self.Session() as session:
+            self.assertIsNone(session.get(ArchiveRecord, self.archive_spring_id))
+            pages = session.scalars(
+                select(ArchivePage).where(
+                    ArchivePage.archive_id == self.archive_spring_id
+                )
+            ).all()
+            self.assertEqual(pages, [])
+            audits = session.scalars(
+                select(AuditLog).where(AuditLog.action == "archive_deleted")
+            ).all()
+            self.assertEqual(len(audits), 1)
+
+    def test_delete_archive_without_permission_forbidden(self):
+        with TestClient(self.app) as client:
+            self._login(client, OPERATOR_USERNAME, OPERATOR_PASSWORD)
+            csrf = client.cookies.get("fileforge_csrf") or ""
+            resp = client.post(
+                f"/archives/{self.archive_spring_id}/delete",
+                data={"csrf_token": csrf},
+                follow_redirects=False,
+            )
+        self.assertEqual(resp.status_code, 403)
+        with self.Session() as session:
+            self.assertIsNotNone(session.get(ArchiveRecord, self.archive_spring_id))
+
+    def test_delete_archive_csrf_missing_forbidden(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.post(
+                f"/archives/{self.archive_spring_id}/delete",
+                data={},
+                follow_redirects=False,
+            )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_delete_archive_cross_org_returns_404(self):
+        with self.Session() as session:
+            org_a = session.scalar(
+                select(Organization).where(Organization.name == "档案室甲")
+            )
+            accounts.create_user(
+                session,
+                username="jia_admin_del",
+                password="org-admin-strong-pw",
+                display_name="甲管理员",
+                organization_id=org_a.id,
+                role_codes=["org_admin"],
+            )
+            session.commit()
+        with TestClient(self.app) as client:
+            self._login(client, "jia_admin_del", "org-admin-strong-pw")
+            csrf = client.cookies.get("fileforge_csrf") or ""
+            resp = client.post(
+                f"/archives/{self.archive_other_org_id}/delete",
+                data={"csrf_token": csrf},
+                follow_redirects=False,
+            )
+        self.assertEqual(resp.status_code, 404)
+        with self.Session() as session:
+            self.assertIsNotNone(session.get(ArchiveRecord, self.archive_other_org_id))
+
+    def test_delete_batch_success_removes_archives(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            csrf = client.cookies.get("fileforge_csrf") or ""
+            resp = client.post(
+                f"/batches/{self.batch_a_id}/delete",
+                data={"csrf_token": csrf},
+                follow_redirects=False,
+            )
+        self.assertIn(resp.status_code, {302, 303})
+        with self.Session() as session:
+            self.assertIsNone(session.get(ProcessingBatch, self.batch_a_id))
+            remaining = session.scalars(
+                select(ArchiveRecord).where(
+                    ArchiveRecord.batch_id == self.batch_a_id
+                )
+            ).all()
+            self.assertEqual(remaining, [])
 
 
 @unittest.skipUnless(DEPENDENCIES_AVAILABLE, f"web deps missing: {_IMPORT_ERROR}")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import (
@@ -39,6 +40,7 @@ router = APIRouter()
 
 
 BATCH_MANAGE_PERMISSION = "batch:manage"
+ARCHIVE_DELETE_PERMISSION = "archive:delete"
 
 
 def _parse_optional_int_query(value: Optional[str], *, name: str) -> Optional[int]:
@@ -327,3 +329,40 @@ def processing_batch_detail(
             "events": events,
         },
     )
+
+
+@router.post("/uploads/{upload_batch_id}/delete")
+def delete_upload(
+    request: Request,
+    upload_batch_id: int,
+    csrf_token: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+) -> Response:
+    """硬删除上传批次及其落盘原图;仅 archive:delete(平台/单位管理员)。"""
+    current_user = load_current_user_from_request(request, session)
+    if current_user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    if ARCHIVE_DELETE_PERMISSION not in current_user.permissions:
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+    if not verify_csrf_from_request(request, session, csrf_token):
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+
+    upload = session.get(UploadBatch, upload_batch_id)
+    if upload is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    project = session.get(Project, upload.project_id)
+    if project is None or not _can_access_project(current_user, project):
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+
+    try:
+        storage_root = repositories.delete_upload_batch(
+            session, upload=upload, actor_user_id=current_user.id
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+
+    # 提交成功后再删盘上原图(remove_upload_root 内部 ignore_errors,不影响已删的库记录)
+    remove_upload_root(Path(storage_root))
+    return RedirectResponse(url="/uploads", status_code=status.HTTP_303_SEE_OTHER)

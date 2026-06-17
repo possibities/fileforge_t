@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional, Tuple
 
-from sqlalchemy import func, select
+from sqlalchemy import delete as sa_delete, func, select, update
 from sqlalchemy.orm import Session
 
 from core.sequence_generator import SequenceGenerator
@@ -29,6 +29,7 @@ from .models import (
     ProcessingJob,
     Project,
     SequenceCounter,
+    UploadBatch,
     UploadedFile,
 )
 
@@ -695,6 +696,139 @@ def record_export_file(
     return record
 
 
+# ── 硬删除(级联 + 删除前审计)────────────────────────────────────────────────
+def delete_archive(
+    session: Session,
+    *,
+    archive: ArchiveRecord,
+    actor_user_id: Optional[int] = None,
+) -> None:
+    """硬删除单份档案及其页面、LLM 轨迹、修订记录。
+
+    先写一条 `archive_deleted` 审计(审计无外键指向档案,删除后仍保留);指向本档案
+    的处理任务 `archive_id` 置空以保留任务历史。调用方负责事务提交。
+    """
+    record_audit_log(
+        session,
+        actor_user_id=actor_user_id,
+        organization_id=archive.organization_id,
+        project_id=archive.project_id,
+        action="archive_deleted",
+        target_type="archive",
+        target_id=archive.id,
+        before_data=dict(archive.final_metadata or {}),
+    )
+    archive_id = archive.id
+    session.execute(sa_delete(ArchivePage).where(ArchivePage.archive_id == archive_id))
+    session.execute(sa_delete(LlmTrace).where(LlmTrace.archive_id == archive_id))
+    session.execute(
+        sa_delete(MetadataRevision).where(MetadataRevision.archive_id == archive_id)
+    )
+    session.execute(
+        update(ProcessingJob)
+        .where(ProcessingJob.archive_id == archive_id)
+        .values(archive_id=None)
+    )
+    session.delete(archive)
+    session.flush()
+
+
+def delete_processing_batch(
+    session: Session,
+    *,
+    batch: ProcessingBatch,
+    actor_user_id: Optional[int] = None,
+) -> None:
+    """硬删除整个处理批次及其下所有档案(连带页面/轨迹/修订)、处理任务与事件。
+
+    导出文件记录的 `batch_id` 置空保留。调用方负责事务提交。
+    """
+    record_audit_log(
+        session,
+        actor_user_id=actor_user_id,
+        organization_id=batch.organization_id,
+        project_id=batch.project_id,
+        action="batch_deleted",
+        target_type="batch",
+        target_id=batch.id,
+        before_data={
+            "batch_key": batch.batch_key,
+            "total_archives": batch.total_archives,
+        },
+    )
+    batch_id = batch.id
+    archive_ids = session.scalars(
+        select(ArchiveRecord.id).where(ArchiveRecord.batch_id == batch_id)
+    ).all()
+    if archive_ids:
+        session.execute(
+            sa_delete(ArchivePage).where(ArchivePage.archive_id.in_(archive_ids))
+        )
+        session.execute(sa_delete(LlmTrace).where(LlmTrace.archive_id.in_(archive_ids)))
+        session.execute(
+            sa_delete(MetadataRevision).where(
+                MetadataRevision.archive_id.in_(archive_ids)
+            )
+        )
+    session.execute(sa_delete(ProcessingEvent).where(ProcessingEvent.batch_id == batch_id))
+    session.execute(sa_delete(ProcessingJob).where(ProcessingJob.batch_id == batch_id))
+    session.execute(
+        update(ExportFile).where(ExportFile.batch_id == batch_id).values(batch_id=None)
+    )
+    session.execute(sa_delete(ArchiveRecord).where(ArchiveRecord.batch_id == batch_id))
+    session.delete(batch)
+    session.flush()
+
+
+def delete_upload_batch(
+    session: Session,
+    *,
+    upload: UploadBatch,
+    actor_user_id: Optional[int] = None,
+) -> str:
+    """硬删除上传批次及其上传文件记录;解除处理批次/任务/档案/页面对它的引用。
+
+    返回 `storage_root`,供调用方在提交后删除磁盘上的原图文件。调用方负责事务提交。
+    """
+    project = session.get(Project, upload.project_id)
+    record_audit_log(
+        session,
+        actor_user_id=actor_user_id,
+        organization_id=project.organization_id if project is not None else None,
+        project_id=upload.project_id,
+        action="upload_deleted",
+        target_type="upload",
+        target_id=upload.id,
+        before_data={
+            "upload_name": upload.upload_name,
+            "file_count": upload.file_count,
+        },
+    )
+    upload_id = upload.id
+    storage_root = upload.storage_root
+    file_ids = session.scalars(
+        select(UploadedFile.id).where(UploadedFile.upload_batch_id == upload_id)
+    ).all()
+    if file_ids:
+        session.execute(
+            update(ArchivePage)
+            .where(ArchivePage.uploaded_file_id.in_(file_ids))
+            .values(uploaded_file_id=None)
+        )
+    session.execute(
+        sa_delete(UploadedFile).where(UploadedFile.upload_batch_id == upload_id)
+    )
+    for model in (ProcessingBatch, ProcessingJob, ArchiveRecord):
+        session.execute(
+            update(model)
+            .where(model.upload_batch_id == upload_id)
+            .values(upload_batch_id=None)
+        )
+    session.delete(upload)
+    session.flush()
+    return storage_root
+
+
 __all__ = [
     "FieldRevision",
     "get_or_create_project",
@@ -713,6 +847,9 @@ __all__ = [
     "mark_archive_status",
     "assign_sequence",
     "record_export_file",
+    "delete_archive",
+    "delete_processing_batch",
+    "delete_upload_batch",
     "record_llm_trace",
     "next_revision_no",
     "record_revisions",

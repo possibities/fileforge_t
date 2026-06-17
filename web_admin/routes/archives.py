@@ -28,6 +28,8 @@ from infrastructure.db.repositories import (
     RETENTION_PERIOD_CHOICES,
     ManualCorrectionInput,
     apply_manual_correction,
+    delete_archive,
+    delete_processing_batch,
 )
 
 from web_admin.auth import CurrentUser
@@ -45,6 +47,7 @@ router = APIRouter()
 ARCHIVE_VIEW_PERMISSION = "archive:view"
 AUDIT_VIEW_PERMISSION = "audit:view"
 ARCHIVE_CORRECT_PERMISSION = "archive:correct"
+ARCHIVE_DELETE_PERMISSION = "archive:delete"
 PREVIEW_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tif", ".tiff"}
 
 
@@ -77,6 +80,18 @@ def _require_archive_correct(
     if error_response is not None:
         return current_user, error_response
     if ARCHIVE_CORRECT_PERMISSION not in current_user.permissions:
+        return current_user, Response(status_code=status.HTTP_403_FORBIDDEN)
+    return current_user, None
+
+
+def _require_archive_delete(
+    request: Request,
+    session: Session,
+) -> tuple[Optional[CurrentUser], Optional[Response]]:
+    current_user, error_response = _require_archive_view(request, session)
+    if error_response is not None:
+        return current_user, error_response
+    if ARCHIVE_DELETE_PERMISSION not in current_user.permissions:
         return current_user, Response(status_code=status.HTTP_403_FORBIDDEN)
     return current_user, None
 
@@ -299,7 +314,12 @@ def get_batch_detail(
     return templates.TemplateResponse(
         request,
         "batch_detail.html",
-        {"user": current_user, "project": project, "batch": detail},
+        {
+            "user": current_user,
+            "project": project,
+            "batch": detail,
+            "csrf_token": request.cookies.get("fileforge_csrf", ""),
+        },
     )
 
 
@@ -623,6 +643,7 @@ def get_archive_detail(
             "batch": batch,
             "archive": detail,
             "notice": notice,
+            "csrf_token": request.cookies.get("fileforge_csrf", ""),
         },
     )
 
@@ -973,5 +994,70 @@ def post_archive_edit(
         )
     return RedirectResponse(
         url=f"/archives/{archive_id}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/archives/{archive_id}/delete")
+def post_delete_archive(
+    request: Request,
+    archive_id: int,
+    csrf_token: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+) -> Response:
+    """硬删除单份档案(连带页面/轨迹/修订),删除前写审计。"""
+    current_user, error_response = _require_archive_delete(request, session)
+    if error_response is not None:
+        return error_response
+    if not verify_csrf_from_request(request, session, csrf_token):
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+
+    archive = session.get(ArchiveRecord, archive_id)
+    if archive is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    if _can_access_archive(session, current_user, archive) is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+
+    try:
+        delete_archive(session, archive=archive, actor_user_id=current_user.id)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+
+    return RedirectResponse(url="/archives", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/batches/{batch_id}/delete")
+def post_delete_batch(
+    request: Request,
+    batch_id: int,
+    csrf_token: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+) -> Response:
+    """硬删除整个处理批次(连带其下所有档案、任务、事件),删除前写审计。"""
+    current_user, error_response = _require_archive_delete(request, session)
+    if error_response is not None:
+        return error_response
+    if not verify_csrf_from_request(request, session, csrf_token):
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+
+    batch = session.get(ProcessingBatch, batch_id)
+    if batch is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    project = _can_access_batch(session, current_user, batch)
+    if project is None:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    project_key = project.project_key
+
+    try:
+        delete_processing_batch(session, batch=batch, actor_user_id=current_user.id)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+
+    return RedirectResponse(
+        url=f"/batches?project_key={project_key}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
