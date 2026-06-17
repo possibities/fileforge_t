@@ -437,6 +437,34 @@ class TestArchiveQueryRoutes(unittest.TestCase):
                 "reviewed",
             )
 
+    def test_review_queue_lists_and_bulk_marks_reviewed(self):
+        with self.Session() as session:
+            ar = session.get(ArchiveRecord, self.archive_spring_id)
+            ar.review_status = "needs_review"
+            session.commit()
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get("/review")
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("春风行动简报", resp.text)
+            csrf = client.cookies.get("fileforge_csrf") or ""
+            resp2 = client.post(
+                "/review/mark-reviewed",
+                data=[
+                    ("archive_id", str(self.archive_spring_id)),
+                    ("csrf_token", csrf),
+                ],
+                follow_redirects=False,
+            )
+            self.assertIn(resp2.status_code, {302, 303})
+            resp3 = client.get("/review")
+        with self.Session() as session:
+            self.assertEqual(
+                session.get(ArchiveRecord, self.archive_spring_id).review_status,
+                "reviewed",
+            )
+        self.assertNotIn("春风行动简报", resp3.text)
+
     # ── 删除档案 / 批次 ────────────────────────────────────────────────────
     def test_delete_archive_success_removes_record_pages_and_audits(self):
         from infrastructure.db.models import AuditLog

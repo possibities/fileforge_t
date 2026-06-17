@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}验证(待复核) - FileForge 管理后台{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="eyebrow">Review Queue</p>
+    <h1>验证(待复核)</h1>
+    <p class="muted">列出需要人工复核的档案(简报题名二次重写失败等会标记到这里),共 {{ result.total }} 条</p>
+  </div>
+</div>
+
+<form method="post" action="/review/mark-reviewed">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <table>
+    <thead>
+      <tr>
+        <th>选择</th>
+        <th>档号</th>
+        <th>题名</th>
+        <th>责任者</th>
+        <th>年度</th>
+        <th>分类号</th>
+        <th>保管期限</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for archive in result.items %}
+      <tr>
+        <td><input type="checkbox" name="archive_id" value="{{ archive.id }}"></td>
+        <td>{{ archive.archive_no or "" }}</td>
+        <td>{{ archive.title or archive.archive_name }}</td>
+        <td>{{ archive.responsible_party or "" }}</td>
+        <td>{{ archive.archive_year or "" }}</td>
+        <td>{{ archive.classification_code or "" }}</td>
+        <td>{{ archive.retention_period or "" }}</td>
+        <td><a href="/archives/{{ archive.id }}">详情</a></td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="8" class="empty-state">没有待复核的档案 🎉</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if result.items %}
+  <button type="submit">标记选中为已复核</button>
+  {% endif %}
+</form>
+
+<div class="grid-pager">
+  {% if prev_url %}<a class="button-link" href="{{ prev_url }}">上一页</a>{% else %}<span class="button-link is-disabled">上一页</span>{% endif %}
+  {% if next_url %}<a class="button-link" href="{{ next_url }}">下一页</a>{% else %}<span class="button-link is-disabled">下一页</span>{% endif %}
+  <span class="grid-jump muted">第 {{ page }} 页</span>
+</div>
+{% endblock %}

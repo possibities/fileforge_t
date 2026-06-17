@@ -1180,3 +1180,80 @@ def post_bulk_delete_archives(
         delete_archive(session, archive=archive, actor_user_id=current_user.id)
     session.commit()
     return RedirectResponse(url="/archives", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/review")
+def review_queue(
+    request: Request,
+    session: Session = Depends(get_session),
+) -> Response:
+    """验证(待复核)队列:列出本权限范围内 review_status=needs_review 的档案。"""
+    current_user, error_response = _require_archive_view(request, session)
+    if error_response is not None:
+        return error_response
+    if ARCHIVE_CORRECT_PERMISSION not in current_user.permissions:
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+
+    query = request.query_params
+    try:
+        page_num = _parse_int_query(query.get("page"), name="page", default=1)
+    except ValueError as exc:
+        return _bad_request(exc)
+
+    result = queries.search_archives(
+        session,
+        filter=queries.ArchiveFilter(review_status=["needs_review"]),
+        organization_id=_scoped_organization_id(current_user),
+        page=page_num,
+        page_size=50,
+    )
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "review_list.html",
+        {
+            "user": current_user,
+            "result": result,
+            "page": page_num,
+            "csrf_token": request.cookies.get("fileforge_csrf", ""),
+            "prev_url": f"/review?page={page_num - 1}" if page_num > 1 else None,
+            "next_url": f"/review?page={page_num + 1}" if result.has_next else None,
+        },
+    )
+
+
+@router.post("/review/mark-reviewed")
+def post_review_mark_reviewed(
+    request: Request,
+    archive_id: list[int] = Form(default=[]),
+    csrf_token: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+) -> Response:
+    """批量把选中档案标记为已复核(review_status=reviewed),逐条校验组织权限并写审计。"""
+    current_user, error_response = _require_archive_correct(request, session)
+    if error_response is not None:
+        return error_response
+    if not verify_csrf_from_request(request, session, csrf_token):
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+
+    for aid in archive_id:
+        archive = session.get(ArchiveRecord, aid)
+        if archive is None:
+            continue
+        if _can_access_archive(session, current_user, archive) is None:
+            continue
+        old_status = archive.review_status
+        archive.review_status = "reviewed"
+        record_audit_log(
+            session,
+            actor_user_id=current_user.id,
+            organization_id=archive.organization_id,
+            project_id=archive.project_id,
+            action="archive_reviewed",
+            target_type="archive",
+            target_id=archive.id,
+            before_data={"review_status": old_status},
+            after_data={"review_status": "reviewed"},
+        )
+    session.commit()
+    return RedirectResponse(url="/review", status_code=status.HTTP_303_SEE_OTHER)

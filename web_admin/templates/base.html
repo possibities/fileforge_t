@@ -18,8 +18,10 @@
     <nav class="nav">
       {% set archives_active = current_path == '/archives' or current_path.startswith('/archives/') %}
       <a href="/archives" class="{% if archives_active %}active{% endif %}"{% if archives_active %} aria-current="page"{% endif %}>档案</a>
-      {% set batches_active = current_path.startswith('/batches') or current_path.startswith('/processing/batches') %}
-      <a href="/batches" class="{% if batches_active %}active{% endif %}"{% if batches_active %} aria-current="page"{% endif %}>批次</a>
+      {% if "archive:correct" in user.permissions %}
+      {% set review_active = current_path.startswith('/review') %}
+      <a href="/review" class="{% if review_active %}active{% endif %}"{% if review_active %} aria-current="page"{% endif %}>验证</a>
+      {% endif %}
       {% if "batch:manage" in user.permissions %}
       {% set uploads_active = current_path.startswith('/uploads') %}
       <a href="/uploads" class="{% if uploads_active %}active{% endif %}"{% if uploads_active %} aria-current="page"{% endif %}>上传</a>
