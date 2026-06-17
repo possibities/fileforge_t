@@ -142,6 +142,8 @@ python -m utils.user_admin users create \
   --role org_operator
 ```
 
+> 用于演示/答辩时,可用 `python scripts/seed_demo.py` 一键创建两个单位与四个角色账号(平台管理员、单位管理员、两类操作员),脚本幂等、可重复运行;完整演示流程见 `docs/demo_setup.md`。
+
 ## 5 启动 Web 后台
 
 `create_app()` 是 FastAPI app factory,用 `--factory` 启动:
@@ -149,6 +151,8 @@ python -m utils.user_admin users create \
 ```bash
 uvicorn web_admin.app:create_app --factory --host 0.0.0.0 --port 8080
 ```
+
+> 启动前务必确认该 shell 已注入 `DATABASE_URL`(参见 2.1 的 env 加载方式)。否则登录(POST `/login`)以及任何依赖数据库的页面会因无法创建数据库 session 而返回 500。
 
 本地访问:
 
