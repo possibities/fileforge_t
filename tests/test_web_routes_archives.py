@@ -483,6 +483,10 @@ class TestArchiveQueryRoutes(unittest.TestCase):
                     "responsible_party": "某单位",
                     "classification_code": "DQL",
                     "retention_period": "永久",
+                    "openness_status": "开放",
+                    "archive_year": "2021",
+                    "document_number": "",
+                    "fonds_unit_name": "某馆",
                     "reason": "",
                     "csrf_token": csrf,
                 },
@@ -498,6 +502,8 @@ class TestArchiveQueryRoutes(unittest.TestCase):
         with self.Session() as session:
             ar = session.get(ArchiveRecord, self.archive_spring_id)
             self.assertEqual(ar.title, "新题名X")
+            self.assertEqual(ar.classification_name, "党群类")
+            self.assertEqual(ar.fonds_unit_name, "某馆")
             self.assertEqual(ar.review_status, "reviewed")
 
     # ── 删除档案 / 批次 ────────────────────────────────────────────────────

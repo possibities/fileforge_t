@@ -1047,16 +1047,21 @@ RETENTION_PERIOD_CHOICES: tuple[str, ...] = ("永久", "30年", "10年")
 
 @dataclass
 class ManualCorrectionInput:
-    """人工修正提交的 4 个字段新值。
+    """人工修正提交的字段新值。
 
-    所有字段都应在 Web/CLI 入口处完成 strip / 长度 / enum 校验后再传入;
-    apply_manual_correction 不做二次校验。
+    前 4 个为基础字段;其余为可选字段(None 表示本次不修改该字段),
+    用于审核工作台扩展可改范围。所有字段都应在入口处完成校验后再传入。
     """
 
     title: str
     responsible_party: str
     classification_code: str
     retention_period: str
+    classification_name: Optional[str] = None
+    openness_status: Optional[str] = None
+    archive_year: Optional[str] = None
+    document_number: Optional[str] = None
+    fonds_unit_name: Optional[str] = None
 
 
 def apply_manual_correction(
@@ -1079,6 +1084,16 @@ def apply_manual_correction(
         "实体分类号": new_values.classification_code,
         "保管期限": new_values.retention_period,
     }
+    optional = {
+        "实体分类名称": new_values.classification_name,
+        "开放状态": new_values.openness_status,
+        "归档年度": new_values.archive_year,
+        "文件编号": new_values.document_number,
+        "立档单位名称": new_values.fonds_unit_name,
+    }
+    for _k, _v in optional.items():
+        if _v is not None:
+            overlay[_k] = _v
     new_final = {**old_final, **overlay}
 
     diffs = _diff_metadata_to_revisions(old_final, new_final)

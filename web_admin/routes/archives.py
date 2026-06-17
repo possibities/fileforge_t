@@ -340,6 +340,12 @@ _CLASSIFICATION_CODE_CHOICES = (
     + [(code, f"{code} · {name}(2020前)") for name, code in CODE_OLD.items()]
 )
 
+# 实体分类号 → 名称(保存时由号自动同步名称,二者保持一致)。
+_CODE_TO_CLASS_NAME: dict[str, str] = {}
+for _cmap in (CODE_NEW, CODE_OLD):
+    for _cname, _ccode in _cmap.items():
+        _CODE_TO_CLASS_NAME[_ccode] = _cname
+
 
 def _archive_filter_from_query(query) -> queries.ArchiveFilter:
     """从 query_params 组装 ArchiveFilter;沿用 list 语义的字段用 getlist。"""
@@ -879,6 +885,10 @@ def _current_values_from_archive(archive: ArchiveRecord) -> dict[str, str]:
         "responsible_party": md.get("责任者") or archive.responsible_party or "",
         "classification_code": md.get("实体分类号") or archive.classification_code or "",
         "retention_period": md.get("保管期限") or archive.retention_period or "永久",
+        "openness_status": md.get("开放状态") or archive.openness_status or "",
+        "archive_year": md.get("归档年度") or archive.archive_year or "",
+        "document_number": md.get("文件编号") or archive.document_number or "",
+        "fonds_unit_name": md.get("立档单位名称") or archive.fonds_unit_name or "",
         "reason": "",
     }
 
@@ -1286,6 +1296,8 @@ def _render_workstation(
             "queue": queue,
             "values": values,
             "retention_choices": list(RETENTION_PERIOD_CHOICES),
+            "classification_choices": _CLASSIFICATION_CODE_CHOICES,
+            "openness_choices": ["开放", "控制"],
             "csrf_token": request.cookies.get("fileforge_csrf", ""),
             "error": error,
             "notice": notice,
@@ -1332,11 +1344,15 @@ def post_review_save(
     responsible_party: Optional[str] = Form(default=None),
     classification_code: Optional[str] = Form(default=None),
     retention_period: Optional[str] = Form(default=None),
+    openness_status: Optional[str] = Form(default=None),
+    archive_year: Optional[str] = Form(default=None),
+    document_number: Optional[str] = Form(default=None),
+    fonds_unit_name: Optional[str] = Form(default=None),
     reason: Optional[str] = Form(default=None),
     csrf_token: Optional[str] = Form(default=None),
     session: Session = Depends(get_session),
 ) -> Response:
-    """在工作台保存四字段人工修正(复用 apply_manual_correction)。"""
+    """在工作台保存人工修正(题名/责任者/分类号/保管期限/开放状态/年度/文号/立档单位)。"""
     current_user, error_response = _require_archive_correct(request, session)
     if error_response is not None:
         return error_response
@@ -1360,6 +1376,19 @@ def post_review_save(
         clean_retention = (retention_period or "").strip()
         if clean_retention not in RETENTION_PERIOD_CHOICES:
             err = f"保管期限必须为 {', '.join(RETENTION_PERIOD_CHOICES)} 之一"
+    clean_openness = clean_year = clean_docnum = clean_fonds = None
+    if err is None:
+        clean_openness = (openness_status or "").strip()
+        if clean_openness not in ("开放", "控制"):
+            err = "开放状态必须为 开放 或 控制"
+    if err is None:
+        clean_year, err = _clean_form_field(archive_year, max_len=8, name="归档年度", required=False)
+        if err is None and clean_year and not clean_year.isdigit():
+            err = "归档年度必须是数字"
+    if err is None:
+        clean_docnum, err = _clean_form_field(document_number, max_len=128, name="文件编号", required=False)
+    if err is None:
+        clean_fonds, err = _clean_form_field(fonds_unit_name, max_len=255, name="立档单位名称", required=False)
     if err is None:
         clean_reason, err = _clean_form_field(reason, max_len=500, name="原因", required=False)
 
@@ -1375,6 +1404,10 @@ def post_review_save(
                 "responsible_party": (responsible_party or "").strip(),
                 "classification_code": (classification_code or "").strip(),
                 "retention_period": (retention_period or "").strip(),
+                "openness_status": (openness_status or "").strip(),
+                "archive_year": (archive_year or "").strip(),
+                "document_number": (document_number or "").strip(),
+                "fonds_unit_name": (fonds_unit_name or "").strip(),
                 "reason": (reason or "").strip(),
             },
             error=err,
@@ -1389,6 +1422,11 @@ def post_review_save(
                 responsible_party=clean_party,
                 classification_code=clean_class,
                 retention_period=clean_retention,
+                classification_name=_CODE_TO_CLASS_NAME.get(clean_class),
+                openness_status=clean_openness,
+                archive_year=clean_year or "",
+                document_number=clean_docnum or "",
+                fonds_unit_name=clean_fonds or "",
             ),
             actor_user_id=current_user.id,
             reason=clean_reason or None,

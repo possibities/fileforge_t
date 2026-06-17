@@ -57,7 +57,12 @@
         <input type="text" name="responsible_party" value="{{ values.responsible_party }}" maxlength="200">
       </label>
       <label>实体分类号
-        <input type="text" name="classification_code" value="{{ values.classification_code }}" maxlength="32">
+        <select name="classification_code">
+          <option value=""{% if not values.classification_code %} selected{% endif %}>— 未选择 —</option>
+          {% for code, label in classification_choices %}
+          <option value="{{ code }}"{% if values.classification_code == code %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
       </label>
       <label>保管期限
         <select name="retention_period">
@@ -65,6 +70,22 @@
           <option value="{{ c }}"{% if values.retention_period == c %} selected{% endif %}>{{ c }}</option>
           {% endfor %}
         </select>
+      </label>
+      <label>开放状态
+        <select name="openness_status">
+          {% for o in openness_choices %}
+          <option value="{{ o }}"{% if values.openness_status == o %} selected{% endif %}>{{ o }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>归档年度
+        <input type="text" name="archive_year" value="{{ values.archive_year }}" maxlength="8">
+      </label>
+      <label>文件编号
+        <input type="text" name="document_number" value="{{ values.document_number }}" maxlength="128">
+      </label>
+      <label>立档单位名称
+        <input type="text" name="fonds_unit_name" value="{{ values.fonds_unit_name }}" maxlength="255">
       </label>
       <label>修改原因(可选)
         <input type="text" name="reason" value="{{ values.reason or '' }}" maxlength="500">
@@ -80,7 +101,7 @@
     <h3>其他字段(只读)</h3>
     <dl class="archive-detail-list">
       {% if archive.final_metadata %}
-      {% for k, v in archive.final_metadata.items() if v not in (None, "", []) and k not in ["题名", "责任者", "实体分类号", "保管期限"] %}
+      {% for k, v in archive.final_metadata.items() if v not in (None, "", []) and k not in ["题名", "责任者", "实体分类号", "实体分类名称", "保管期限", "开放状态", "归档年度", "文件编号", "立档单位名称"] %}
       <dt>{{ k }}</dt>
       <dd>{{ v }}</dd>
       {% endfor %}
