@@ -257,7 +257,11 @@ class BatchRecorder:
                 archive = session.get(ArchiveRecord, ctx.archive_id)
                 if archive is None:
                     raise RuntimeError(f"archive id={ctx.archive_id} 不存在")
-                review = self._derive_review_status(metadata) if status == "success" else None
+                review = (
+                    self._derive_review_status(metadata)
+                    if status == "success"
+                    else "not_required"
+                )
                 if status == "success" and metadata is not None:
                     # llm_metadata = 规则引擎修正前的 LLM 原始结构化输出,
                     # 由 ExtractionTrace.parsed_metadata 透传而来(trace 可能为 None)。
@@ -520,12 +524,15 @@ class BatchRecorder:
 
     @staticmethod
     def _derive_review_status(metadata: Optional[Dict[str, Any]]) -> str:
+        """成功处理的档案默认进入“待审核”(pending);带【待核查】标记的升级为
+        “重点审核”(needs_review)。处理失败的档案由调用方置为 not_required(无需审核),
+        不进入审核队列。"""
         if not metadata:
-            return "not_required"
+            return "pending"
         notes = str(metadata.get("备注") or "")
         if "【待核查】" in notes:
             return "needs_review"
-        return "not_required"
+        return "pending"
 
 
 __all__ = ["BatchRecorder", "VALID_RERUN_POLICIES"]

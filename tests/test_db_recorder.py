@@ -314,7 +314,7 @@ class TestBatchRecorder(unittest.TestCase):
             archive = session.scalar(select(ArchiveRecord))
             self.assertEqual(archive.review_status, "needs_review")
 
-    def test_review_status_stays_not_required_without_marker(self):
+    def test_review_status_set_to_pending_without_marker(self):
         recorder = self._make_recorder()
         processor = BatchProcessor(_StubClassifier(self.payload), recorder=recorder)
         processor.batch_process_archives(
@@ -323,6 +323,23 @@ class TestBatchRecorder(unittest.TestCase):
 
         with self.Session() as session:
             archive = session.scalar(select(ArchiveRecord))
+            self.assertEqual(archive.review_status, "pending")
+
+    def test_review_status_not_required_when_processing_fails(self):
+        class _FailingClassifier:
+            def process_multi_page_document(self, archive_name, image_paths):
+                raise RuntimeError("boom")
+
+        recorder = self._make_recorder()
+        processor = BatchProcessor(_FailingClassifier(), recorder=recorder)
+        processor.batch_process_archives(
+            self.archive_dict, output_dir=str(self.tmp_root / "out")
+        )
+
+        with self.Session() as session:
+            archive = session.scalar(select(ArchiveRecord))
+            self.assertIn(archive.processing_status, ("failed", "error"))
+            # 处理失败的档案不进入待审核队列,审核状态置为 not_required(无需审核)。
             self.assertEqual(archive.review_status, "not_required")
 
     def test_llm_trace_persisted_to_archive_columns(self):

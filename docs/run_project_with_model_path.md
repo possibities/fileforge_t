@@ -456,3 +456,28 @@ docker exec postgres psql -U postgres -d fileforge_current -c "SELECT id, storag
 rm -rf /path/to/storage_root
 ```
 
+## 12 审核状态语义与历史数据回填
+
+档案的 `review_status` 表示**人工审核进度**(与 `processing_status` 系统处理进度是两个独立维度):
+
+| 值 | 展示 | 含义 |
+| --- | --- | --- |
+| `pending` | 待审核 | 处理成功、尚未人工审核(审核队列的常规项) |
+| `needs_review` | 重点审核 | 处理成功且被规则标记 `【待核查】`,审核队列置顶 |
+| `reviewed` | 已审核 | 已人工确认 |
+| `not_required` | 无需审核 | 处理失败/异常的档案,不进入审核队列 |
+
+审核页 `/review` 的队列 = `processing_status='success' AND review_status != 'reviewed'`,即 **待审核 + 重点审核** 的并集;查询页按 `review_status` 单值筛选,所以查询页的「待审核」只是审核队列中的常规(非重点)部分,二者是包含关系而非相等。
+
+> 早期版本语义相反(成功档案被置为 `not_required`、失败档案停留在 `pending`),导致查询页与审核页的「待审核」是两批不相干数据。代码已修正;**对修正前入库的历史数据**,执行下面的一次性回填即可对齐(`fileforge_current` 换成实际库名):
+
+```bash
+# 成功但未审核的:not_required → pending(纳入待审核)
+docker exec postgres psql -U postgres -d fileforge_current -c \
+  "UPDATE archive_records SET review_status='pending' WHERE processing_status='success' AND review_status='not_required';"
+
+# 处理失败/异常的:pending → not_required(移出待审核)
+docker exec postgres psql -U postgres -d fileforge_current -c \
+  "UPDATE archive_records SET review_status='not_required' WHERE processing_status IN ('failed','error') AND review_status='pending';"
+```
+
