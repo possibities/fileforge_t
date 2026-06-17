@@ -247,7 +247,8 @@ python -m utils.processing_runner --upload-batch-id 1
 - `/archives/{archive_id}/panel`: 档案详情片段(分栏主从右栏用),只读,沿用与详情页相同的数据与单位隔离。
 - `/archives/{archive_id}/revisions`: 修订记录。
 - `/archives/{archive_id}/audit`: 审计记录。
-- `/archives/{archive_id}/edit`: 元数据人工修正(GET 表单 + POST 提交);仅允许编辑题名 / 责任者 / 实体分类号 / 保管期限 4 个字段。
+- `/review`: 审核队列(待人工确认的档案,系统标记“需重点核查”的置顶)。
+- `/review/{archive_id}`: 审核工作台(唯一的元数据编辑入口):左=待审核队列,中=页面图像,右=可改元数据(题名 / 责任者 / 实体分类号 / 保管期限 / 开放状态 / 归档年度 / 文件编号 / 立档单位名称;实体分类名称随分类号自动同步)。`POST /review/{id}/save` 保存修正,`POST /review/{id}/done` 标记已审核并跳到下一条。详情页“去处理”按钮即指向此页。
 
 ## 8 权限与范围
 

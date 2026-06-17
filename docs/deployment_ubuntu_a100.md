@@ -369,7 +369,7 @@ export WEB_MAX_UPLOAD_FILES='2000'
 | `/batches/{id}` | 批次详情 | `archive:view` |
 | `/batches/{id}/archives` | 档案列表(12 字段过滤) | `archive:view` |
 | `/archives/{id}` | 档案详情(三快照、页面图片路径) | `archive:view` |
-| `/archives/{id}/edit` | 元数据人工修正(4 字段) | `archive:correct` |
+| `/review/{id}` | 审核工作台 / 元数据人工修正(8 字段,唯一编辑入口) | `archive:correct` |
 | `/archives/{id}/revisions` | 修订记录 | `archive:view` |
 | `/archives/{id}/audit` | 审计记录 | `audit:view` |
 
@@ -501,7 +501,7 @@ journalctl -u fileforge-web -f
 - [ ] `/uploads` 能上传 demo 图片或 zip,并能进入 `/processing/batches/{id}`
 - [ ] 看到批次详情、档案详情、修订记录、审计记录页面
 - [ ] 用 `org_operator` 账号登录验证组织隔离(只看到本单位档案)
-- [ ] 在 `/archives/{id}/edit` 改 4 字段,看到 `correction_status` 变成 `corrected`,`metadata_revisions` 表新增行
+- [ ] 在 `/review/{id}` 工作台改元数据,看到 `correction_status` 变成 `corrected`,`metadata_revisions` 表新增行
 
 ---
 

@@ -296,7 +296,7 @@ class TestArchiveQueryRoutes(unittest.TestCase):
             self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
             resp = client.get(f"/archives/{self.archive_spring_id}")
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(f"/archives/{self.archive_spring_id}/edit", resp.text)
+        self.assertIn(f"/review/{self.archive_spring_id}", resp.text)
 
     def test_archive_detail_no_change_notice_renders(self):
         with TestClient(self.app) as client:
@@ -620,7 +620,7 @@ class TestArchiveQueryRoutes(unittest.TestCase):
 
 
 @unittest.skipUnless(DEPENDENCIES_AVAILABLE, f"web deps missing: {_IMPORT_ERROR}")
-class TestArchiveEditRoute(unittest.TestCase):
+class TestReviewWorkstationSaveRoute(unittest.TestCase):
     def setUp(self):
         self.engine = _make_engine()
         Base.metadata.create_all(self.engine)
@@ -718,16 +718,16 @@ class TestArchiveEditRoute(unittest.TestCase):
     def _csrf(self, client) -> str:
         return client.cookies.get("fileforge_csrf") or ""
 
-    def test_get_edit_form_unauthenticated_redirects_to_login(self):
+    def test_get_workstation_unauthenticated_redirects_to_login(self):
         with TestClient(self.app) as client:
             resp = client.get(
-                f"/archives/{self.archive_a_id}/edit",
+                f"/review/{self.archive_a_id}",
                 follow_redirects=False,
             )
         self.assertIn(resp.status_code, {302, 303})
         self.assertTrue(resp.headers["location"].endswith("/login"))
 
-    def test_get_edit_form_missing_permission_returns_403(self):
+    def test_get_workstation_missing_permission_returns_403(self):
         old_operator_role = accounts.BUILTIN_ROLES["org_operator"]
         with self.Session() as session:
             accounts.create_user(
@@ -750,26 +750,26 @@ class TestArchiveEditRoute(unittest.TestCase):
             with TestClient(self.app) as client:
                 self._login(client, "readonly_user", "readonly-strong-pw")
                 resp = client.get(
-                    f"/archives/{self.archive_a_id}/edit",
+                    f"/review/{self.archive_a_id}",
                     follow_redirects=False,
                 )
             self.assertEqual(resp.status_code, 403)
         finally:
             accounts.BUILTIN_ROLES["org_operator"] = old_operator_role
 
-    def test_get_edit_form_cross_org_returns_404(self):
+    def test_get_workstation_cross_org_returns_404(self):
         with TestClient(self.app) as client:
             self._login(client, OPERATOR_USERNAME, OPERATOR_PASSWORD)
             resp = client.get(
-                f"/archives/{self.archive_b_id}/edit",
+                f"/review/{self.archive_b_id}",
                 follow_redirects=False,
             )
         self.assertEqual(resp.status_code, 404)
 
-    def test_get_edit_form_renders_prefilled_with_current_values(self):
+    def test_get_workstation_renders_prefilled_with_current_values(self):
         with TestClient(self.app) as client:
             self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
-            resp = client.get(f"/archives/{self.archive_a_id}/edit")
+            resp = client.get(f"/review/{self.archive_a_id}")
         self.assertEqual(resp.status_code, 200)
         body = resp.text
         self.assertIn('name="title"', body)
@@ -784,23 +784,27 @@ class TestArchiveEditRoute(unittest.TestCase):
             "responsible_party": "县档案室",
             "classification_code": "DQL",
             "retention_period": "10年",
+            "openness_status": "开放",
+            "archive_year": "2025",
+            "document_number": "",
+            "fonds_unit_name": "县档案馆",
             "reason": "",
             "csrf_token": csrf,
         }
         form.update(fields)
         return client.post(
-            f"/archives/{archive_id}/edit",
+            f"/review/{archive_id}/save",
             data=form,
             follow_redirects=False,
         )
 
-    def test_post_edit_csrf_missing_returns_403(self):
+    def test_post_save_csrf_missing_returns_403(self):
         with TestClient(self.app) as client:
             self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
             resp = self._post_edit(client, self.archive_a_id, csrf="")
         self.assertEqual(resp.status_code, 403)
 
-    def test_post_edit_invalid_retention_period_re_renders_with_error(self):
+    def test_post_save_invalid_retention_period_re_renders_with_error(self):
         from infrastructure.db.models import MetadataRevision
         with TestClient(self.app) as client:
             self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
@@ -815,7 +819,7 @@ class TestArchiveEditRoute(unittest.TestCase):
         with self.Session() as session:
             self.assertEqual(session.query(MetadataRevision).count(), 0)
 
-    def test_post_edit_blank_title_re_renders_with_error(self):
+    def test_post_save_blank_title_re_renders_with_error(self):
         with TestClient(self.app) as client:
             self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
             resp = self._post_edit(
@@ -827,7 +831,7 @@ class TestArchiveEditRoute(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn("题名", resp.text)
 
-    def test_post_edit_too_long_title_re_renders_with_error(self):
+    def test_post_save_too_long_title_re_renders_with_error(self):
         with TestClient(self.app) as client:
             self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
             resp = self._post_edit(
@@ -838,7 +842,22 @@ class TestArchiveEditRoute(unittest.TestCase):
             )
         self.assertEqual(resp.status_code, 200)
 
-    def test_post_edit_success_redirects_to_detail(self):
+    def test_post_save_invalid_openness_re_renders_with_error(self):
+        from infrastructure.db.models import MetadataRevision
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = self._post_edit(
+                client,
+                self.archive_a_id,
+                csrf=self._csrf(client),
+                openness_status="半开放",
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("开放状态", resp.text)
+        with self.Session() as session:
+            self.assertEqual(session.query(MetadataRevision).count(), 0)
+
+    def test_post_save_success_redirects_to_workstation(self):
         from infrastructure.db.models import AuditLog, MetadataRevision
         with TestClient(self.app) as client:
             self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
@@ -849,30 +868,15 @@ class TestArchiveEditRoute(unittest.TestCase):
                 title="新题名",
             )
         self.assertIn(resp.status_code, {302, 303})
-        self.assertEqual(resp.headers["location"], f"/archives/{self.archive_a_id}")
+        self.assertEqual(
+            resp.headers["location"],
+            f"/review/{self.archive_a_id}?notice=saved",
+        )
         with self.Session() as session:
             self.assertEqual(session.query(MetadataRevision).count(), 1)
             self.assertEqual(session.query(AuditLog).count(), 1)
 
-    def test_post_edit_no_change_redirects_with_notice(self):
-        from infrastructure.db.models import MetadataRevision
-        with TestClient(self.app) as client:
-            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
-            resp = self._post_edit(
-                client,
-                self.archive_a_id,
-                csrf=self._csrf(client),
-                title="原题名",
-            )
-        self.assertIn(resp.status_code, {302, 303})
-        self.assertEqual(
-            resp.headers["location"],
-            f"/archives/{self.archive_a_id}?notice=no_change",
-        )
-        with self.Session() as session:
-            self.assertEqual(session.query(MetadataRevision).count(), 0)
-
-    def test_post_edit_platform_admin_can_edit_any_org(self):
+    def test_post_save_platform_admin_can_edit_any_org(self):
         with TestClient(self.app) as client:
             self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
             resp = self._post_edit(
@@ -886,7 +890,7 @@ class TestArchiveEditRoute(unittest.TestCase):
             )
         self.assertIn(resp.status_code, {302, 303})
 
-    def test_post_edit_org_operator_cannot_edit_other_org(self):
+    def test_post_save_org_operator_cannot_edit_other_org(self):
         with TestClient(self.app) as client:
             self._login(client, OPERATOR_USERNAME, OPERATOR_PASSWORD)
             resp = self._post_edit(
@@ -897,7 +901,7 @@ class TestArchiveEditRoute(unittest.TestCase):
             )
         self.assertEqual(resp.status_code, 404)
 
-    def test_post_edit_records_actor_user_id_from_session(self):
+    def test_post_save_records_actor_user_id_from_session(self):
         from infrastructure.db.models import AppUser, AuditLog, MetadataRevision
         with TestClient(self.app) as client:
             self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)

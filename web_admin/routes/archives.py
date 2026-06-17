@@ -28,7 +28,6 @@ from infrastructure.db.models import (
     UploadedFile,
 )
 from infrastructure.db.repositories import (
-    EDITABLE_FIELDS,
     RETENTION_PERIOD_CHOICES,
     ManualCorrectionInput,
     apply_manual_correction,
@@ -872,12 +871,6 @@ def list_archive_audit_logs(
     )
 
 
-def _readonly_fields(archive: ArchiveRecord) -> list[tuple[str, str]]:
-    md = dict(archive.final_metadata or {})
-    seen = set(EDITABLE_FIELDS)
-    return [(key, md.get(key) or "") for key in md.keys() if key not in seen]
-
-
 def _current_values_from_archive(archive: ArchiveRecord) -> dict[str, str]:
     md = archive.final_metadata or {}
     return {
@@ -891,64 +884,6 @@ def _current_values_from_archive(archive: ArchiveRecord) -> dict[str, str]:
         "fonds_unit_name": md.get("立档单位名称") or archive.fonds_unit_name or "",
         "reason": "",
     }
-
-
-def _render_edit_form(
-    request: Request,
-    *,
-    current_user: CurrentUser,
-    project,
-    batch,
-    archive: ArchiveRecord,
-    values: dict[str, str],
-    error: Optional[str],
-) -> Response:
-    csrf_token = request.cookies.get("fileforge_csrf", "")
-    templates = request.app.state.templates
-    return templates.TemplateResponse(
-        request,
-        "archive_edit.html",
-        {
-            "user": current_user,
-            "project": project,
-            "batch": batch,
-            "archive": archive,
-            "values": values,
-            "readonly_fields": _readonly_fields(archive),
-            "retention_choices": list(RETENTION_PERIOD_CHOICES),
-            "csrf_token": csrf_token,
-            "error": error,
-        },
-    )
-
-
-@router.get("/archives/{archive_id}/edit")
-def get_archive_edit_form(
-    request: Request,
-    archive_id: int,
-    session: Session = Depends(get_session),
-) -> Response:
-    current_user, error_response = _require_archive_correct(request, session)
-    if error_response is not None:
-        return error_response
-
-    archive = session.get(ArchiveRecord, archive_id)
-    if archive is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-    access = _can_access_archive(session, current_user, archive)
-    if access is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-    batch, project = access
-
-    return _render_edit_form(
-        request,
-        current_user=current_user,
-        project=project,
-        batch=batch,
-        archive=archive,
-        values=_current_values_from_archive(archive),
-        error=None,
-    )
 
 
 def _clean_form_field(
@@ -966,101 +901,6 @@ def _clean_form_field(
     if len(value) > max_len:
         return None, f"{name}长度不能超过 {max_len} 字符"
     return value, None
-
-
-@router.post("/archives/{archive_id}/edit")
-def post_archive_edit(
-    request: Request,
-    archive_id: int,
-    title: Optional[str] = Form(default=None),
-    responsible_party: Optional[str] = Form(default=None),
-    classification_code: Optional[str] = Form(default=None),
-    retention_period: Optional[str] = Form(default=None),
-    reason: Optional[str] = Form(default=None),
-    csrf_token: Optional[str] = Form(default=None),
-    session: Session = Depends(get_session),
-) -> Response:
-    current_user, error_response = _require_archive_correct(request, session)
-    if error_response is not None:
-        return error_response
-
-    if not verify_csrf_from_request(request, session, csrf_token):
-        return Response(status_code=status.HTTP_403_FORBIDDEN)
-
-    archive = session.get(ArchiveRecord, archive_id)
-    if archive is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-    access = _can_access_archive(session, current_user, archive)
-    if access is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-    batch, project = access
-
-    err: Optional[str] = None
-    clean_title, err = _clean_form_field(title, max_len=500, name="题名")
-    clean_party = clean_class = clean_retention = clean_reason = None
-    if err is None:
-        clean_party, err = _clean_form_field(
-            responsible_party, max_len=200, name="责任者"
-        )
-    if err is None:
-        clean_class, err = _clean_form_field(
-            classification_code, max_len=32, name="实体分类号"
-        )
-    if err is None:
-        clean_retention = (retention_period or "").strip()
-        if clean_retention not in RETENTION_PERIOD_CHOICES:
-            err = f"保管期限必须为 {', '.join(RETENTION_PERIOD_CHOICES)} 之一"
-    if err is None:
-        clean_reason, err = _clean_form_field(
-            reason, max_len=500, name="原因", required=False,
-        )
-
-    submitted_values = {
-        "title": (title or "").strip(),
-        "responsible_party": (responsible_party or "").strip(),
-        "classification_code": (classification_code or "").strip(),
-        "retention_period": (retention_period or "").strip(),
-        "reason": (reason or "").strip(),
-    }
-
-    if err is not None:
-        return _render_edit_form(
-            request,
-            current_user=current_user,
-            project=project,
-            batch=batch,
-            archive=archive,
-            values=submitted_values,
-            error=err,
-        )
-
-    try:
-        rev_no = apply_manual_correction(
-            session,
-            archive=archive,
-            new_values=ManualCorrectionInput(
-                title=clean_title,
-                responsible_party=clean_party,
-                classification_code=clean_class,
-                retention_period=clean_retention,
-            ),
-            actor_user_id=current_user.id,
-            reason=clean_reason or None,
-        )
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-
-    if rev_no == 0:
-        return RedirectResponse(
-            url=f"/archives/{archive_id}?notice=no_change",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-    return RedirectResponse(
-        url=f"/archives/{archive_id}",
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
 
 
 @router.post("/archives/{archive_id}/delete")

@@ -400,7 +400,7 @@ organizations  ──┐
 | `/batches/{id}` | 批次详情(失败码统计、schema 三件套) | `archive:view` |
 | `/batches/{id}/archives` | 档案列表(12 字段过滤) | `archive:view` |
 | `/archives/{id}` | 档案详情(三快照、页面图片) | `archive:view` |
-| `/archives/{id}/edit` | 人工修正 4 个字段 | `archive:correct` |
+| `/review/{id}` | 审核工作台(唯一编辑入口,8 字段可改) | `archive:correct` |
 | `/archives/{id}/revisions` | 修订历史 | `archive:view` |
 | `/archives/{id}/audit` | 审计日志 | `audit:view` |
 

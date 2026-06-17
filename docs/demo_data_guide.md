@@ -89,7 +89,7 @@ demo_upload.zip
 -> 点击开始处理
 -> /processing/batches/{id} 查看任务和事件
 -> /batches/{id}/archives 查看结果
--> /archives/{id}/edit 修改 4 个核心字段
+-> /review/{id} 工作台修改元数据(题名/责任者/分类号/保管期限/开放状态/年度/文号/立档单位)
 -> /archives/{id}/revisions 查看修订记录
 -> /archives/{id}/audit 查看审计日志
 ```

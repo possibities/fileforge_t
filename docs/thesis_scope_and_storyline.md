@@ -315,7 +315,7 @@
 | 件号生成 | `core/sequence_generator.py` |
 | 批量处理 | `processors/batch_processor.py` |
 | JSON/CSV 导出 | `processors/exporter.py` |
-| 人工修正 | `/archives/{id}/edit` |
+| 人工修正 | `/review/{id}`(审核工作台) |
 | 修订记录 | `/archives/{id}/revisions` |
 | 审计记录 | `/archives/{id}/audit` |
 
