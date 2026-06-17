@@ -54,11 +54,4 @@
   </a>
   {% endif %}
 </nav>
-
-<p><a href="/account/password">修改密码</a></p>
-
-<form class="inline-form" method="post" action="/logout">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <button class="secondary" type="submit">退出登录</button>
-</form>
 {% endblock %}

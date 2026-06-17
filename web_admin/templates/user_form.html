@@ -5,30 +5,34 @@
 {% if error %}
 <p role="alert">{{ error }}</p>
 {% endif %}
-<form method="post" action="/admin/users/new">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <label>
-    用户名
-    <input type="text" name="username" value="{{ form.username or '' }}" required>
-  </label>
-  <label>
-    密码（至少 12 字符）
-    <input type="password" name="password" minlength="12" required>
-  </label>
-  <label>
-    显示名
-    <input type="text" name="display_name" value="{{ form.display_name or '' }}">
-  </label>
-  <label>
-    角色
-    <select name="role_codes" required>
-      <option value="">-- 选择角色 --</option>
-      {% for role in roles %}
-      <option value="{{ role.code }}"{% if form.selected_role == role.code %} selected{% endif %}>{{ role.name }}（{{ role.code }}）</option>
-      {% endfor %}
-    </select>
-  </label>
-  <button type="submit">创建</button>
-</form>
-<p><a href="/admin/users">返回列表</a></p>
+<section class="panel form-panel">
+  <form class="stacked-form" method="post" action="/admin/users/new">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>
+      用户名
+      <input type="text" name="username" value="{{ form.username or '' }}" required>
+    </label>
+    <label>
+      密码（至少 12 字符）
+      <input type="password" name="password" minlength="12" required>
+    </label>
+    <label>
+      显示名
+      <input type="text" name="display_name" value="{{ form.display_name or '' }}">
+    </label>
+    <label>
+      角色
+      <select name="role_codes" required>
+        <option value="">-- 选择角色 --</option>
+        {% for role in roles %}
+        <option value="{{ role.code }}"{% if form.selected_role == role.code %} selected{% endif %}>{{ role.name }}（{{ role.code }}）</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="form-actions">
+      <button type="submit">创建</button>
+      <a class="button-link" href="/admin/users">返回列表</a>
+    </div>
+  </form>
+</section>
 {% endblock %}
