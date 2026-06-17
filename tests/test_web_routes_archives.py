@@ -422,6 +422,18 @@ class TestArchiveQueryRoutes(unittest.TestCase):
             )
         self.assertEqual(resp.status_code, 404)
 
+    # ── 导出 CSV ──────────────────────────────────────────────────────────
+    def test_export_archives_csv_downloads(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get("/archives/export.csv")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("text/csv", resp.headers["content-type"])
+        self.assertIn("attachment", resp.headers.get("content-disposition", ""))
+        self.assertIn("题名", resp.text)  # 表头列名
+        lines = [ln for ln in resp.text.splitlines() if ln.strip()]
+        self.assertEqual(len(lines), 4)  # 表头 + 3 份档案(平台管理员跨单位可见)
+
     # ── 删除档案 / 批次 ────────────────────────────────────────────────────
     def test_delete_archive_success_removes_record_pages_and_audits(self):
         from infrastructure.db.models import AuditLog

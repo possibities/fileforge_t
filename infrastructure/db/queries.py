@@ -540,32 +540,20 @@ ARCHIVE_SORT_FIELDS: dict[str, Any] = {
 }
 
 
-def search_archives(
-    session: Session,
+def _archive_search_base(
     *,
-    filter: Optional[ArchiveFilter] = None,
-    organization_id: Optional[int] = None,
-    project_key: Optional[str] = None,
-    batch_id: Optional[int] = None,
-    sort_field: Optional[str] = None,
-    sort_dir: str = "asc",
-    page: int = 1,
-    page_size: int = 50,
-) -> "ListResult[ArchiveSummary]":
-    """跨批次档案检索:不强制 batch_id,支持可选 project_key/batch_id 过滤、
-    排序白名单与组织隔离。
+    filter: Optional[ArchiveFilter],
+    organization_id: Optional[int],
+    project_key: Optional[str],
+    batch_id: Optional[int],
+) -> Select:
+    """构造档案检索/导出共用的过滤 + 组织隔离 select(不含排序/分页)。
 
-    组织隔离子句与 list_archives 完全一致(Project + ProcessingBatch + ArchiveRecord
-    三段 org 校验);batch_id=None 时退化为全库检索。ArchiveRecord→batch→project 为
-    多对一,join 不放大行数,count 子查询无需 DISTINCT。
+    组织隔离子句与 list_archives 一致;batch_id=None 退化为全库。多对一 join 不放大行数。
     """
-    _validate_pagination(page, page_size)
-
     base = select(ArchiveRecord)
     if batch_id is not None:
         base = base.where(ArchiveRecord.batch_id == batch_id)
-
-    # 组织隔离或按 project_key 过滤都需要 join 到 Project。
     if organization_id is not None or project_key is not None:
         base = base.join(
             ProcessingBatch, ArchiveRecord.batch_id == ProcessingBatch.id
@@ -588,9 +576,38 @@ def search_archives(
                 )
             )
         )
-
     if filter is not None:
         base = _apply_archive_filter(base, filter)
+    return base
+
+
+def search_archives(
+    session: Session,
+    *,
+    filter: Optional[ArchiveFilter] = None,
+    organization_id: Optional[int] = None,
+    project_key: Optional[str] = None,
+    batch_id: Optional[int] = None,
+    sort_field: Optional[str] = None,
+    sort_dir: str = "asc",
+    page: int = 1,
+    page_size: int = 50,
+) -> "ListResult[ArchiveSummary]":
+    """跨批次档案检索:不强制 batch_id,支持可选 project_key/batch_id 过滤、
+    排序白名单与组织隔离。
+
+    组织隔离子句与 list_archives 完全一致(Project + ProcessingBatch + ArchiveRecord
+    三段 org 校验);batch_id=None 时退化为全库检索。ArchiveRecord→batch→project 为
+    多对一,join 不放大行数,count 子查询无需 DISTINCT。
+    """
+    _validate_pagination(page, page_size)
+
+    base = _archive_search_base(
+        filter=filter,
+        organization_id=organization_id,
+        project_key=project_key,
+        batch_id=batch_id,
+    )
 
     total = session.scalar(
         select(func.count()).select_from(base.subquery())
@@ -617,6 +634,37 @@ def search_archives(
         page=page,
         page_size=page_size,
     )
+
+
+def export_archive_metadata(
+    session: Session,
+    *,
+    filter: Optional[ArchiveFilter] = None,
+    organization_id: Optional[int] = None,
+    project_key: Optional[str] = None,
+    batch_id: Optional[int] = None,
+    limit: int = 5000,
+) -> list[dict]:
+    """导出用:按与 search_archives 相同的过滤/隔离取匹配档案的 final_metadata。
+
+    默认排序、最多 limit 条;返回 final_metadata 字典列表(空则 {})。
+    """
+    if limit < 1:
+        raise ValueError("limit must be >= 1")
+    base = _archive_search_base(
+        filter=filter,
+        organization_id=organization_id,
+        project_key=project_key,
+        batch_id=batch_id,
+    )
+    rows = session.scalars(
+        base.order_by(
+            ArchiveRecord.archive_no.asc().nullslast(),
+            ArchiveRecord.item_no.asc().nullslast(),
+            ArchiveRecord.id.asc(),
+        ).limit(limit)
+    ).all()
+    return [dict(r.final_metadata or {}) for r in rows]
 
 
 def _page_to_dataclass(p: ArchivePageModel) -> ArchivePage:
@@ -932,6 +980,7 @@ __all__ = [
     "get_batch_detail",
     "list_archives",
     "search_archives",
+    "export_archive_metadata",
     "ARCHIVE_SORT_FIELDS",
     "get_archive_detail",
     "list_revisions",

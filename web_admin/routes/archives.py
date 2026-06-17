@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import math
 import mimetypes
 from pathlib import Path
@@ -11,7 +13,9 @@ from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from config.config import Config
 from constants import CODE_NEW, CODE_OLD
+from processors.exporter import Exporter
 from infrastructure.db import projects as projects_service, queries
 from infrastructure.db.models import (
     CORRECTION_STATUS,
@@ -469,6 +473,18 @@ def _render_archive_search(
     clear_qs = urlencode(clear_scope)
     clear_url = f"{path}?{clear_qs}" if clear_qs else path
 
+    # 导出链接始终携带 scope + 已应用过滤(导出路由是全局 /archives/export.csv)
+    export_params: dict = {}
+    if project_key:
+        export_params["project_key"] = project_key
+    if batch_id is not None:
+        export_params["batch_id"] = batch_id
+    for _name, _value in filters.items():
+        if _value:
+            export_params[_name] = _value
+    export_qs = urlencode(export_params)
+    export_url = "/archives/export.csv" + (f"?{export_qs}" if export_qs else "")
+
     # 整套当前状态(除 page),供跳页表单的隐藏域 / 行链接复用。
     state_params = dict(base_params)
     if sort_field:
@@ -518,6 +534,7 @@ def _render_archive_search(
             "prev_url": prev_url,
             "next_url": next_url,
             "clear_url": clear_url,
+            "export_url": export_url,
             "state_params": state_params,
             "row_base_qs": row_base_qs,
             "selected_id": selected_id,
@@ -577,6 +594,64 @@ def search_archives_page(
         project=project,
         batch=batch,
         scope_locked=False,
+    )
+
+
+def _ensure_exporter_initialized() -> None:
+    if not Exporter.HEADERS:
+        Exporter.initialize(Config.EXPORTER_CONFIG_PATH)
+
+
+@router.get("/archives/export.csv")
+def export_archives_csv(
+    request: Request,
+    session: Session = Depends(get_session),
+) -> Response:
+    """按当前查询条件导出匹配档案为 CSV(UTF-8 BOM + exporter 模板表头)。
+
+    路由定义在 /archives/{archive_id} 之前,避免被单段路径参数路由抢匹配。
+    """
+    current_user, error_response = _require_archive_view(request, session)
+    if error_response is not None:
+        return error_response
+    if "archive:export" not in current_user.permissions:
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+
+    query = request.query_params
+    try:
+        archive_filter = _archive_filter_from_query(query)
+    except ValueError as exc:
+        return _bad_request(exc)
+
+    project_key = _clean_optional_str(query.get("project_key"))
+    batch_id = None
+    batch_id_raw = _clean_optional_str(query.get("batch_id"))
+    if batch_id_raw:
+        try:
+            batch_id = int(batch_id_raw)
+        except ValueError:
+            return _bad_request(ValueError("batch_id必须是整数"))
+
+    metadatas = queries.export_archive_metadata(
+        session,
+        filter=archive_filter,
+        organization_id=_scoped_organization_id(current_user),
+        project_key=project_key,
+        batch_id=batch_id,
+    )
+
+    _ensure_exporter_initialized()
+    headers = Exporter.get_headers("default")
+    rows = Exporter._build_export_rows([{"metadata": m} for m in metadatas], headers)
+    buffer = io.StringIO()
+    buffer.write("﻿")  # BOM,便于 Excel 正确识别中文
+    writer = csv.DictWriter(buffer, fieldnames=headers)
+    writer.writeheader()
+    writer.writerows(rows)
+    return Response(
+        content=buffer.getvalue().encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="archives.csv"'},
     )
 
 

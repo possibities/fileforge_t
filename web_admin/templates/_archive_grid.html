@@ -37,6 +37,9 @@
     </label>
     <button type="submit">查询</button>
     <a class="button-link" href="{{ clear_url }}" data-grid-nav>清空筛选</a>
+    {% if "archive:export" in user.permissions %}
+    <a class="button-link" href="{{ export_url }}">导出 CSV</a>
+    {% endif %}
 
     <details class="col-toggle">
       <summary>列显示</summary>
