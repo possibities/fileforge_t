@@ -167,14 +167,56 @@
       });
   }
 
+  // ── 批量删除:收集勾选行,构造一次性 POST 表单提交 ───────────────────────
+  function submitBulkDelete(button) {
+    var checked = document.querySelectorAll(".row-select:checked");
+    if (!checked.length) {
+      window.alert("请先勾选要删除的档案");
+      return;
+    }
+    if (
+      !window.confirm(
+        "确认删除选中的 " + checked.length + " 份档案?此操作不可恢复。"
+      )
+    ) {
+      return;
+    }
+    var form = document.createElement("form");
+    form.method = "post";
+    form.action = "/archives/bulk-delete";
+    form.style.display = "none";
+    var csrf = document.createElement("input");
+    csrf.type = "hidden";
+    csrf.name = "csrf_token";
+    csrf.value = button.getAttribute("data-csrf") || "";
+    form.appendChild(csrf);
+    Array.prototype.forEach.call(checked, function (cb) {
+      var inp = document.createElement("input");
+      inp.type = "hidden";
+      inp.name = "archive_id";
+      inp.value = cb.value;
+      form.appendChild(inp);
+    });
+    document.body.appendChild(form);
+    form.submit();
+  }
+
   // ── 事件委托(挂 document,跨片段替换有效)────────────────────────────────
   document.addEventListener("click", function (ev) {
+    var bulk = ev.target.closest("[data-bulk-delete]");
+    if (bulk) {
+      ev.preventDefault();
+      submitBulkDelete(bulk);
+      return;
+    }
     var nav = ev.target.closest("a[data-grid-nav]");
     if (nav && gridPane() && gridPane().contains(nav)) {
       ev.preventDefault();
       loadGrid(nav.getAttribute("href"), true);
       return;
     }
+    // 勾选框/标签点击不触发行预览
+    if (ev.target.closest("input, label")) return;
     var row = ev.target.closest("tr.grid-row");
     if (row) {
       var link = ev.target.closest("a");

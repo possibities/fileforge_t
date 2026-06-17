@@ -536,6 +536,7 @@ def _render_archive_search(
             "next_url": next_url,
             "clear_url": clear_url,
             "export_url": export_url,
+            "csrf_token": request.cookies.get("fileforge_csrf", ""),
             "state_params": state_params,
             "row_base_qs": row_base_qs,
             "selected_id": selected_id,
@@ -1176,3 +1177,28 @@ def post_mark_archive_reviewed(
     return RedirectResponse(
         url=f"/archives/{archive_id}", status_code=status.HTTP_303_SEE_OTHER
     )
+
+
+@router.post("/archives/bulk-delete")
+def post_bulk_delete_archives(
+    request: Request,
+    archive_id: list[int] = Form(default=[]),
+    csrf_token: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+) -> Response:
+    """批量硬删除选中档案;逐条校验组织权限,跳过越权/不存在项。"""
+    current_user, error_response = _require_archive_delete(request, session)
+    if error_response is not None:
+        return error_response
+    if not verify_csrf_from_request(request, session, csrf_token):
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+
+    for aid in archive_id:
+        archive = session.get(ArchiveRecord, aid)
+        if archive is None:
+            continue
+        if _can_access_archive(session, current_user, archive) is None:
+            continue
+        delete_archive(session, archive=archive, actor_user_id=current_user.id)
+    session.commit()
+    return RedirectResponse(url="/archives", status_code=status.HTTP_303_SEE_OTHER)

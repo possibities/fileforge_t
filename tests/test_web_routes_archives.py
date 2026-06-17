@@ -544,6 +544,24 @@ class TestArchiveQueryRoutes(unittest.TestCase):
             ).all()
             self.assertEqual(remaining, [])
 
+    def test_bulk_delete_archives(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            csrf = client.cookies.get("fileforge_csrf") or ""
+            resp = client.post(
+                "/archives/bulk-delete",
+                data=[
+                    ("archive_id", str(self.archive_spring_id)),
+                    ("archive_id", str(self.archive_other_org_id)),
+                    ("csrf_token", csrf),
+                ],
+                follow_redirects=False,
+            )
+        self.assertIn(resp.status_code, {302, 303})
+        with self.Session() as session:
+            self.assertIsNone(session.get(ArchiveRecord, self.archive_spring_id))
+            self.assertIsNone(session.get(ArchiveRecord, self.archive_other_org_id))
+
 
 @unittest.skipUnless(DEPENDENCIES_AVAILABLE, f"web deps missing: {_IMPORT_ERROR}")
 class TestArchiveEditRoute(unittest.TestCase):

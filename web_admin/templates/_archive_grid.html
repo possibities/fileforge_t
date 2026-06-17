@@ -40,6 +40,9 @@
     {% if "archive:export" in user.permissions %}
     <a class="button-link" href="{{ export_url }}">导出 CSV</a>
     {% endif %}
+    {% if "archive:delete" in user.permissions %}
+    <button type="button" class="danger" data-bulk-delete data-csrf="{{ csrf_token }}">批量删除所选</button>
+    {% endif %}
 
     <details class="col-toggle">
       <summary>列显示</summary>
@@ -142,7 +145,12 @@
           <td class="col-processing_status"><span class="status-badge status-{{ archive.processing_status }}">{{ archive.processing_status }}</span></td>
           <td class="col-review_status"><span class="status-badge status-{{ archive.review_status }}">{{ archive.review_status }}</span></td>
           <td class="col-page_count">{{ archive.page_count }}</td>
-          <td class="col-op"><a class="row-open" href="{{ path }}?{{ row_base_qs }}{% if row_base_qs %}&{% endif %}selected={{ archive.id }}" data-archive-id="{{ archive.id }}">详情</a></td>
+          <td class="col-op">
+            <a class="row-open" href="{{ path }}?{{ row_base_qs }}{% if row_base_qs %}&{% endif %}selected={{ archive.id }}" data-archive-id="{{ archive.id }}">详情</a>
+            {% if "archive:delete" in user.permissions %}
+            <input type="checkbox" class="row-select" value="{{ archive.id }}" title="选择以批量删除">
+            {% endif %}
+          </td>
         </tr>
         {% else %}
         <tr>
