@@ -136,6 +136,36 @@ def _gpu_info() -> list[dict]:
     return gpus
 
 
+def _gpu_used_now() -> list[dict]:
+    """读一次当前各卡显存(MiB),用于记录跑批前的空闲基线(主要是 vLLM 的静态预留)。"""
+    if shutil.which("nvidia-smi") is None:
+        return []
+    try:
+        out = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=index,memory.used,memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout
+    except Exception:
+        return []
+    rows = []
+    for line in out.strip().splitlines():
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) >= 3:
+            try:
+                rows.append(
+                    {"index": int(parts[0]), "used_mib": int(float(parts[1])), "total_mib": int(float(parts[2]))}
+                )
+            except ValueError:
+                continue
+    return rows
+
+
 # ── 文档发现 + worker ────────────────────────────────────────────────────────
 def _discover_documents(input_root: str, exclude: set[str]) -> list[tuple[str, list[str]]]:
     scanner = BatchProcessor(classifier=None)
@@ -204,9 +234,11 @@ def _run_level(concurrency: int, archive_dict: dict, output_root: str, sampler: 
         print(line)
     if gpu["sampled"] and gpu["per_gpu"]:
         for g in gpu["per_gpu"]:
+            free = g["total_mib"] - g["used_peak_mib"]
+            g["free_min_mib"] = free
             print(
-                f"    GPU{g['index']} 显存峰值 {g['used_peak_mib']}/{g['total_mib']} MiB,"
-                f" 利用率峰值 {g['util_peak_pct']}%"
+                f"    GPU{g['index']} 显存峰值 {g['used_peak_mib']}/{g['total_mib']} MiB"
+                f"(剩余约 {free} MiB),利用率峰值 {g['util_peak_pct']}%"
             )
     print(f"    并发 {concurrency}: 成功 worker {ok_workers}/{concurrency},墙钟 {wall}s")
     return {"concurrency": concurrency, "wall_s": wall, "ok_workers": ok_workers, "workers": workers, "gpu": gpu}
@@ -221,6 +253,11 @@ def main() -> None:
     parser.add_argument("--exclude", default="web_uploads")
     parser.add_argument("--output-root", default="output_results/_concurrency_probe")
     parser.add_argument("--report", default="", help="报告文件路径;不填自动生成")
+    parser.add_argument(
+        "--stop-on-vram",
+        action="store_true",
+        help="显存达 97%% 即停(默认关闭——vLLM 静态预留会让基线就很高,建议靠真实 OOM 失败来定上限)",
+    )
     args = parser.parse_args()
 
     exclude = {x.strip() for x in args.exclude.split(",") if x.strip()}
@@ -239,6 +276,12 @@ def main() -> None:
         f"{len(archive_dict)} 份 / {pages} 页:{list(archive_dict)}"
     )
     print(f"将测并发档位:{levels_to_run}")
+    idle = report["environment"]["gpu_idle_used"]
+    for g in idle:
+        print(
+            f"跑批前空闲基线:GPU{g['index']} 已用 {g['used_mib']}/{g['total_mib']} MiB"
+            f"(这部分主要是 vLLM 的静态预留,与并发数无关)"
+        )
 
     sampler = GpuSampler()
     report = {
@@ -251,6 +294,7 @@ def main() -> None:
             "ocr_use_gpu": getattr(Config, "OCR_USE_GPU", None),
             "nvidia_smi": sampler.available,
             "gpus": _gpu_info(),
+            "gpu_idle_used": _gpu_used_now(),
         },
         "docs": {"available": len(docs), "used": list(archive_dict), "pages_per_worker": pages},
         "levels": [],
@@ -263,11 +307,11 @@ def main() -> None:
             report["levels"].append(level)
             if level["ok_workers"] < c:
                 report["stopped_reason"] = f"worker_failed@{c}"
-                print(f"\n并发 {c} 出现失败 → 停止加压。")
+                print(f"\n并发 {c} 出现失败(多半是 OCR/显存 OOM)→ 上限就是 {c - 1}。")
                 break
-            if level["gpu"].get("near_full"):
+            if args.stop_on_vram and level["gpu"].get("near_full"):
                 report["stopped_reason"] = f"vram_near_full@{c}"
-                print(f"\n并发 {c} 显存接近打满 → 停止加压。")
+                print(f"\n并发 {c} 显存接近打满 → 停止加压(--stop-on-vram)。")
                 break
     except KeyboardInterrupt:
         report["stopped_reason"] = "interrupted"
