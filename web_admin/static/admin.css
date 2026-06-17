@@ -699,9 +699,10 @@ dl {
 
 .archive-detail-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
+  grid-template-columns: minmax(0, 860px) minmax(340px, 460px);
   gap: 22px;
   align-items: start;
+  justify-content: start;
 }
 
 .archive-detail-main {
