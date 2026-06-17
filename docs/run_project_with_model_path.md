@@ -175,29 +175,37 @@ docker exec postgres psql -U postgres -d fileforge_current -c "\dt"
 
 如果选择使用网页处理档案，不需要手动运行 `python main.py`。Web 页面点击“开始处理”后，会在后台复用同一条 OCR/LLM/规则/导出流程。
 
-当前演示库已经保留以下 Web 登录账号：
+推荐用项目自带的种子脚本一键创建演示账号(完整演示流程见 `docs/demo_setup.md`):
 
-```text
-平台管理员：admin / Admin@fileforge2026
-单位操作员：operator01 / Operator@fileforge2026
+```bash
+python scripts/seed_demo.py
 ```
 
-`Admin@fileforge2026` 和 `Operator@fileforge2026` 只适合本机演示或临时环境，正式环境应换成新的强密码。
+它会创建两个单位(甲档案室、乙档案室)与四个角色账号,口令统一为 `Demo@123456789`:
+
+```text
+平台管理员：  padmin    / Demo@123456789
+甲单位管理员：jia_admin / Demo@123456789
+甲单位操作员：jia_op    / Demo@123456789
+乙单位操作员：yi_op     / Demo@123456789
+```
+
+脚本幂等,可重复运行(已存在的单位/账号自动跳过)。`Demo@123456789` 仅适合本机演示或临时环境,正式环境应换成新的强密码:`DEMO_PASSWORD='你的强口令12位以上' python scripts/seed_demo.py`。若此前手动建过 `admin`/`operator01` 等账号,它们不受影响、仍可登录。
 
 ### 8.1 准备演示单位和项目
 
-为了网页演示更完整，可以预置一个单位和一个项目。先查看数据库里已有单位：
+单位与四个角色账号已由 `python scripts/seed_demo.py` 创建;项目建议在网页里由管理员角色创建(见 `docs/demo_setup.md` 第 2 节),以演示 `project:manage` 权限。若想直接用 SQL 预置一个演示项目(供 CLI 入库或快速试跑),可在 甲档案室 下创建项目 `demo_2026`。先查看已有单位:
 
 ```bash
 docker exec postgres psql -U postgres -d fileforge_current -c "SELECT id, name, status FROM organizations ORDER BY id;"
 ```
 
-下面这段 SQL 会保证存在一个单位 `档案室` 和一个项目 `demo_2026`。可以重复执行：
+下面这段 SQL 会保证 甲档案室 下存在项目 `demo_2026`,可以重复执行:
 
 ```bash
-docker exec postgres psql -U postgres -d fileforge_current -c "INSERT INTO organizations (name, status) VALUES ('档案室', 'active') ON CONFLICT (name) DO UPDATE SET status = 'active';"
+docker exec postgres psql -U postgres -d fileforge_current -c "INSERT INTO organizations (name, status) VALUES ('甲档案室', 'active') ON CONFLICT (name) DO UPDATE SET status = 'active';"
 
-docker exec postgres psql -U postgres -d fileforge_current -c "INSERT INTO projects (project_key, project_name, organization_id, status, preserve_existing_numbers_on_rerun) SELECT 'demo_2026', '2026 演示项目', id, 'active', true FROM organizations WHERE name = '档案室' ON CONFLICT (project_key) DO UPDATE SET project_name = EXCLUDED.project_name, organization_id = EXCLUDED.organization_id, status = 'active';"
+docker exec postgres psql -U postgres -d fileforge_current -c "INSERT INTO projects (project_key, project_name, organization_id, status, preserve_existing_numbers_on_rerun) SELECT 'demo_2026', '2026 演示项目', id, 'active', true FROM organizations WHERE name = '甲档案室' ON CONFLICT (project_key) DO UPDATE SET project_name = EXCLUDED.project_name, organization_id = EXCLUDED.organization_id, status = 'active';"
 
 docker exec postgres psql -U postgres -d fileforge_current -c "SELECT id, name, status FROM organizations ORDER BY id;"
 
@@ -227,6 +235,7 @@ uvicorn web_admin.app:create_app --factory --host 0.0.0.0 --port 8080
 
 ```text
 http://服务器IP:8080/login
+http://172.16.118.205:8080/login
 ```
 
 网页登录后按这个顺序使用：
