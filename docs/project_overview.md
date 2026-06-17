@@ -586,7 +586,7 @@ huggingface-cli download Qwen/Qwen3-32B-AWQ --local-dir ~/.cache/huggingface/hub
 # 3) 启动 vLLM(tmux 常驻)
 vllm serve ~/.cache/huggingface/hub/Qwen3-32B-AWQ \
   --served-model-name qwen3-32b-awq \
-  --max-model-len 8192 --gpu-memory-utilization 0.90
+  --max-model-len 8192 --gpu-memory-utilization 0.6   # 同卡跑 PaddleOCR 时降到 0.6 留显存;独占整卡可回 0.90
 
 # 4) PostgreSQL + 迁移
 sudo apt install -y postgresql && sudo systemctl enable --now postgresql

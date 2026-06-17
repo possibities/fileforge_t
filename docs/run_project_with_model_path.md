@@ -60,8 +60,12 @@ vllm serve ~/.cache/huggingface/hub/Qwen3-32B-AWQ \
   --host 0.0.0.0 \
   --port 8000 \
   --max-model-len 8192 \
-  --gpu-memory-utilization 0.90
+  --gpu-memory-utilization 0.6
 ```
+
+> `--gpu-memory-utilization 0.6`:与同卡 PaddleOCR(`OCR_USE_GPU=True`)共存的推荐值。
+> vLLM 默认会圈走 ~90% 显存,OCR 就没余量、并发跑批会 OOM;降到 0.6 给 OCR 腾地方。
+> 若 vLLM 独占整卡(OCR 走 CPU 或另一张卡),可调回 0.90。
 
 不要关闭这个窗口。需要离开 tmux 时按 `Ctrl-b` 后按 `d`。
 

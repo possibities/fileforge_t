@@ -26,8 +26,15 @@ vllm serve ~/.cache/huggingface/hub/Qwen3-32B-AWQ \
   --quantization awq_marlin \
   --dtype auto \
   --max-model-len 8192 \
-  --gpu-memory-utilization 0.90
+  --gpu-memory-utilization 0.6
 ```
+
+> **与 PaddleOCR 同卡时务必调低。** 本项目每个并发跑批 worker 会各自在同一张
+> GPU 上加载一份 PaddleOCR(`OCR_USE_GPU=True`)。vLLM 默认会一次性圈走 ~90%
+> 显存,OCR 就没余量了(实测 A6000 48GB 上并发 1 即 ~97%)。把
+> `--gpu-memory-utilization` 降到 **0.6**(48GB 卡约腾出 14GB)给 OCR 留地方,
+> 即可支撑小并发跑批。代价仅是 KV cache 变小(短文本元数据抽取无感)。
+> 若 vLLM 独占整卡、OCR 走 CPU,则可调回 0.90。
 
 关键参数说明：
 
@@ -36,7 +43,7 @@ vllm serve ~/.cache/huggingface/hub/Qwen3-32B-AWQ \
 | `--served-model-name qwen3-32b-awq` | 客户端 `Config.LLM_MODEL_NAME` 必须与此一致 |
 | `--quantization awq_marlin` | Marlin kernel 跑 AWQ，比原生 awq 快 ~30% |
 | `--max-model-len 8192` | KV cache 上限；大于客户端 prompt+ocr_text+max_tokens 即可 |
-| `--gpu-memory-utilization 0.90` | 预留 10% 显存给其他进程，单卡独占可调到 0.95 |
+| `--gpu-memory-utilization 0.6` | 与同卡 PaddleOCR 共存的推荐值;vLLM 独占整卡可调到 0.90~0.95 |
 | `--host 0.0.0.0` | 允许跨机访问，仅本机调用可改 `127.0.0.1` |
 
 多卡场景追加：
