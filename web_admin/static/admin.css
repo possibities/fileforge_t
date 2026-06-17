@@ -846,6 +846,8 @@ dd {
   gap: 28px;
   align-items: center;
   min-height: calc(100vh - 140px);
+  max-width: 1040px;
+  margin: 0 auto;
 }
 
 .login-copy {
