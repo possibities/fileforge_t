@@ -54,8 +54,14 @@
         <dd>{{ archive.error_code or "" }} {{ archive.error_message or "" }}</dd>
       </dl>
 
-      <h3>最终 Metadata</h3>
+      <h3>其他元数据</h3>
+      {% set extra_rows = [] %}
       {% if archive.final_metadata %}
+        {% for key, value in archive.final_metadata.items() if value not in (None, "", []) %}
+          {% set _ = extra_rows.append((key, value)) %}
+        {% endfor %}
+      {% endif %}
+      {% if extra_rows %}
       <table>
         <thead>
           <tr>
@@ -64,7 +70,7 @@
           </tr>
         </thead>
         <tbody>
-          {% for key, value in archive.final_metadata.items() %}
+          {% for key, value in extra_rows %}
           <tr>
             <td>{{ key }}</td>
             <td>{{ value }}</td>
@@ -73,7 +79,7 @@
         </tbody>
       </table>
       {% else %}
-      <p class="muted">无 metadata。</p>
+      <p class="muted">无更多元数据。</p>
       {% endif %}
     </main>
 
