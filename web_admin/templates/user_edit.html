@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}编辑用户 - FileForge 管理后台{% endblock %}
+{% block content %}
+<h1>编辑用户</h1>
+<p class="muted">用户名: {{ target.username }}（用户名与密码不在此处修改）</p>
+{% if error %}
+<p role="alert">{{ error }}</p>
+{% endif %}
+<form method="post" action="/admin/users/{{ target.id }}/edit">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>
+    显示名
+    <input type="text" name="display_name" value="{{ form.display_name or '' }}">
+  </label>
+  <label>
+    角色
+    <select name="role_codes" required>
+      {% for role in roles %}
+      <option value="{{ role.code }}"{% if form.selected_role == role.code %} selected{% endif %}>{{ role.name }}（{{ role.code }}）</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit">保存</button>
+  <a class="button-link" href="/admin/users">取消</a>
+</form>
+<p><a href="/admin/users">返回列表</a></p>
+{% endblock %}

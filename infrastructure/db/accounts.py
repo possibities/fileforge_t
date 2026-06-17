@@ -330,6 +330,24 @@ def reset_password(session: Session, *, username: str, new_password: str) -> App
     return user
 
 
+def update_user(
+    session: Session,
+    *,
+    user_id: int,
+    display_name: Optional[str] = None,
+    role_code: Optional[str] = None,
+) -> AppUser:
+    """更新用户显示名与角色(不改用户名/口令)。不 commit。role_code 非法 → ValueError。"""
+    user = session.get(AppUser, user_id)
+    if user is None:
+        raise ValueError(f"user not found: {user_id}")
+    if display_name is not None:
+        user.display_name = display_name.strip() or None
+    if role_code is not None:
+        user.role = _validate_role_code(role_code)
+    return user
+
+
 __all__ = [
     "BUILTIN_PERMISSIONS",
     "BUILTIN_ROLES",
@@ -349,4 +367,5 @@ __all__ = [
     "authenticate_user",
     "disable_user",
     "reset_password",
+    "update_user",
 ]

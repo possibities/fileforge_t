@@ -24,11 +24,19 @@
       <td>{{ user.roles | join(", ") }}</td>
       <td><span class="status-badge status-{{ user.status }}">{{ user.status }}</span></td>
       <td>{{ user.created_at }}</td>
-      <td>
+      <td class="table-actions">
+        <a href="/admin/users/{{ user.id }}/edit">编辑</a>
+        {% if user.status == "active" %}
         <form method="post" action="/admin/users/{{ user.id }}/disable" style="display:inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit">禁用</button>
         </form>
+        {% else %}
+        <form method="post" action="/admin/users/{{ user.id }}/enable" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit">启用</button>
+        </form>
+        {% endif %}
         <a href="/admin/users/{{ user.id }}/reset-password">重置密码</a>
       </td>
     </tr>

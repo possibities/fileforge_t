@@ -198,6 +198,122 @@ def post_disable_user(
     )
 
 
+@router.post("/{user_id}/enable")
+def post_enable_user(
+    request: Request,
+    user_id: int,
+    csrf_token: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+) -> Response:
+    current_user, error_response = _require_user_manage(request, session)
+    if error_response is not None:
+        return error_response
+    if not verify_csrf_from_request(request, session, csrf_token):
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+
+    target = session.get(AppUser, user_id)
+    if target is None or not _can_manage_user(current_user, target):
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    target.status = "active"
+    session.commit()
+    return RedirectResponse(url="/admin/users", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _render_user_edit(
+    request: Request,
+    *,
+    current_user: CurrentUser,
+    target: AppUser,
+    session: Session,
+    error: Optional[str],
+    form: dict,
+) -> Response:
+    return request.app.state.templates.TemplateResponse(
+        request,
+        "user_edit.html",
+        {
+            "user": current_user,
+            "target": target,
+            "csrf_token": request.cookies.get("fileforge_csrf", ""),
+            "roles": _available_roles(session, current_user),
+            "error": error,
+            "form": form,
+        },
+    )
+
+
+@router.get("/{user_id}/edit")
+def get_user_edit_form(
+    request: Request,
+    user_id: int,
+    session: Session = Depends(get_session),
+) -> Response:
+    current_user, error_response = _require_user_manage(request, session)
+    if error_response is not None:
+        return error_response
+    target = session.get(AppUser, user_id)
+    if target is None or not _can_manage_user(current_user, target):
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    return _render_user_edit(
+        request,
+        current_user=current_user,
+        target=target,
+        session=session,
+        error=None,
+        form={"display_name": target.display_name or "", "selected_role": target.role},
+    )
+
+
+@router.post("/{user_id}/edit")
+def post_user_edit(
+    request: Request,
+    user_id: int,
+    display_name: Optional[str] = Form(default=None),
+    role_codes: list[str] = Form(default=[]),
+    csrf_token: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+) -> Response:
+    current_user, error_response = _require_user_manage(request, session)
+    if error_response is not None:
+        return error_response
+    if not verify_csrf_from_request(request, session, csrf_token):
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+
+    target = session.get(AppUser, user_id)
+    if target is None or not _can_manage_user(current_user, target):
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+
+    cleaned_role_codes = [code for code in role_codes if code]
+    role_code = cleaned_role_codes[0] if cleaned_role_codes else None
+    # 非平台管理员不能把用户设成平台管理员
+    if role_code == PLATFORM_ADMIN_ROLE and not has_platform_scope(current_user):
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+
+    try:
+        accounts.update_user(
+            session,
+            user_id=user_id,
+            display_name=display_name or "",
+            role_code=role_code,
+        )
+        session.commit()
+    except ValueError as exc:
+        session.rollback()
+        return _render_user_edit(
+            request,
+            current_user=current_user,
+            target=target,
+            session=session,
+            error=str(exc),
+            form={
+                "display_name": (display_name or "").strip(),
+                "selected_role": role_code or "",
+            },
+        )
+
+    return RedirectResponse(url="/admin/users", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @router.get("/{user_id}/reset-password")
 def get_reset_password_form(
     request: Request,
