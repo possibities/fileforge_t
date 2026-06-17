@@ -14,7 +14,7 @@
   <table>
     <thead>
       <tr>
-        <th>选择</th>
+        <th><label class="grid-select-all"><input type="checkbox" data-review-select-all> 全选</label></th>
         <th>优先级</th>
         <th>档号</th>
         <th>题名</th>
@@ -61,4 +61,11 @@
   {% if next_url %}<a class="button-link" href="{{ next_url }}">下一页</a>{% else %}<span class="button-link is-disabled">下一页</span>{% endif %}
   <span class="grid-jump muted">第 {{ page }} 页</span>
 </div>
+<script>
+  document.addEventListener("change", function (ev) {
+    if (!ev.target.matches("[data-review-select-all]")) return;
+    var boxes = document.querySelectorAll('input[name="archive_id"]');
+    for (var i = 0; i < boxes.length; i++) boxes[i].checked = ev.target.checked;
+  });
+</script>
 {% endblock %}

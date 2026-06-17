@@ -40,8 +40,21 @@
       {% endif %}
     </nav>
     <div class="identity">
-      <span class="identity-name">{{ user.display_name or user.username }}</span>
-      <span class="identity-role">{{ user.roles | join(", ") }}</span>
+      <details class="account-menu">
+        <summary>
+          <span class="identity-name">{{ user.display_name or user.username }}</span>
+          <span class="identity-role">{{ user.roles | join(", ") }}</span>
+        </summary>
+        <div class="account-menu-pop">
+          {% if "account:self_update" in user.permissions %}
+          <a href="/account/password">修改密码</a>
+          {% endif %}
+          <form method="post" action="/logout">
+            <input type="hidden" name="csrf_token" value="{{ request.cookies.get('fileforge_csrf', '') }}">
+            <button type="submit">切换账号 / 退出</button>
+          </form>
+        </div>
+      </details>
     </div>
     {% endif %}
   </header>

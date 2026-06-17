@@ -132,6 +132,42 @@ a:hover {
   overflow-wrap: anywhere;
 }
 
+/* 账号菜单:零依赖 <details> 下拉,内含修改密码 / 切换账号。 */
+.account-menu {
+  position: relative;
+}
+.account-menu > summary {
+  display: grid;
+  gap: 1px;
+  justify-items: end;
+  cursor: pointer;
+  list-style: none;
+}
+.account-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.account-menu-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(16, 24, 40, 0.14);
+}
+.account-menu-pop a,
+.account-menu-pop button {
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+}
+
 .page {
   width: 100%;
   max-width: 1680px;
@@ -237,6 +273,19 @@ select:focus,
 textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(15, 107, 87, 0.14);
+}
+
+/* 勾选框/单选框恢复原生尺寸:否则会继承上面的 min-width:190px / min-height:38px 被撑大。 */
+input[type="checkbox"],
+input[type="radio"] {
+  min-width: 0;
+  min-height: 0;
+  width: auto;
+  height: auto;
+  padding: 0;
+  margin: 0;
+  vertical-align: middle;
+  accent-color: var(--accent);
 }
 
 textarea {
