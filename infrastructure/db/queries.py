@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from .models import (
     ArchivePage as ArchivePageModel,
+    AppUser,
     ArchiveRecord,
     AuditLog,
     MetadataRevision,
@@ -880,6 +881,91 @@ def list_audit_logs(
     )
 
 
+@dataclass(frozen=True)
+class AuditEntryRow:
+    """全局审计列表行:跨对象的操作留痕,带操作人用户名与整理项目 key。"""
+
+    id: int
+    created_at: datetime
+    actor_user_id: Optional[int]
+    actor_username: Optional[str]
+    action: str
+    target_type: Optional[str]
+    target_id: Optional[int]
+    project_key: Optional[str]
+    message: Optional[str]
+
+
+def search_audit_logs(
+    session: Session,
+    *,
+    organization_id: Optional[int] = None,
+    action: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> "ListResult[AuditEntryRow]":
+    """全局审计记录列表(按 created_at DESC)。
+
+    organization_id 非 None 时按单位隔离(平台管理员传 None 看全部);
+    action 非空时按动作过滤。
+    """
+    _validate_pagination(page, page_size)
+
+    def _scoped(stmt: Select) -> Select:
+        if organization_id is not None:
+            stmt = stmt.where(AuditLog.organization_id == organization_id)
+        if action:
+            stmt = stmt.where(AuditLog.action == action)
+        return stmt
+
+    count_stmt = _scoped(select(func.count()).select_from(AuditLog))
+    total = session.scalar(count_stmt) or 0
+
+    rows_stmt = _scoped(
+        select(AuditLog, AppUser.username, Project.project_key)
+        .select_from(AuditLog)
+        .outerjoin(AppUser, AuditLog.actor_user_id == AppUser.id)
+        .outerjoin(Project, AuditLog.project_id == Project.id)
+    ).order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+
+    rows = session.execute(
+        _paginate(rows_stmt, page=page, page_size=page_size)
+    ).all()
+
+    items = [
+        AuditEntryRow(
+            id=log.id,
+            created_at=log.created_at,
+            actor_user_id=log.actor_user_id,
+            actor_username=username,
+            action=log.action,
+            target_type=log.target_type,
+            target_id=log.target_id,
+            project_key=project_key,
+            message=log.message,
+        )
+        for (log, username, project_key) in rows
+    ]
+    return _build_list_result(
+        items=items,
+        total=int(total),
+        page=page,
+        page_size=page_size,
+    )
+
+
+def audit_action_choices(
+    session: Session,
+    *,
+    organization_id: Optional[int] = None,
+) -> list[str]:
+    """审计动作去重列表,用于筛选下拉。"""
+    stmt = select(AuditLog.action).distinct()
+    if organization_id is not None:
+        stmt = stmt.where(AuditLog.organization_id == organization_id)
+    return sorted(a for (a,) in session.execute(stmt).all() if a)
+
+
 def _upload_batch_to_row(row: UploadBatch) -> UploadBatchRow:
     return UploadBatchRow(
         id=row.id,
@@ -1015,6 +1101,7 @@ __all__ = [
     "ArchiveDetail",
     "RevisionRow",
     "AuditLogRow",
+    "AuditEntryRow",
     "UploadBatchRow",
     "ProcessingJobRow",
     "ProcessingEventRow",
@@ -1028,6 +1115,8 @@ __all__ = [
     "get_archive_detail",
     "list_revisions",
     "list_audit_logs",
+    "search_audit_logs",
+    "audit_action_choices",
     "list_upload_batches",
     "list_processing_jobs",
     "list_processing_events",

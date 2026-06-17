@@ -873,6 +873,56 @@ def list_archive_audit_logs(
     )
 
 
+@router.get("/admin/audit")
+def global_audit_log(
+    request: Request,
+    action: Optional[str] = None,
+    page: Optional[str] = None,
+    page_size: Optional[str] = None,
+    session: Session = Depends(get_session),
+) -> Response:
+    """全局审计记录:跨档案/批次/项目的操作留痕,按单位隔离,可按动作筛选。"""
+    current_user, error_response = _require_archive_view(request, session)
+    if error_response is not None:
+        return error_response
+    if AUDIT_VIEW_PERMISSION not in current_user.permissions:
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+
+    try:
+        page_num = _parse_int_query(page, name="page", default=1)
+        page_size_num = _parse_int_query(page_size, name="page_size", default=50)
+    except ValueError as exc:
+        return _bad_request(exc)
+
+    org_id = _scoped_organization_id(current_user)
+    clean_action = (action or "").strip() or None
+    try:
+        result = queries.search_audit_logs(
+            session,
+            organization_id=org_id,
+            action=clean_action,
+            page=page_num,
+            page_size=page_size_num,
+        )
+    except ValueError as exc:
+        return _bad_request(exc)
+
+    action_choices = queries.audit_action_choices(session, organization_id=org_id)
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "audit_global.html",
+        {
+            "user": current_user,
+            "result": result,
+            "action_choices": action_choices,
+            "selected_action": clean_action or "",
+            "page": page_num,
+            "page_size": page_size_num,
+        },
+    )
+
+
 def _current_values_from_archive(archive: ArchiveRecord) -> dict[str, str]:
     md = archive.final_metadata or {}
     return {

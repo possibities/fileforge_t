@@ -89,3 +89,26 @@ def status_label(value: Optional[str], domain: Optional[str] = None) -> str:
         if domain_map and value in domain_map:
             return domain_map[value]
     return _COMMON_LABELS.get(value, value)
+
+
+# 审计动作码 → 中文(audit_logs.action)。
+_AUDIT_ACTION_LABELS: dict[str, str] = {
+    "manual_correction": "人工修正",
+    "force_rerun_rules": "规则重跑",
+    "archive_reviewed": "标记已审核",
+    "archive_deleted": "删除档案",
+    "batch_deleted": "删除批次",
+    "upload_deleted": "删除上传批次",
+    "upload_created": "创建上传",
+    "processing_started": "启动跑批",
+    "export": "导出",
+    "login": "登录",
+    "logout": "退出登录",
+}
+
+
+def audit_action_label(value: Optional[str]) -> str:
+    """审计动作码翻中文;未知值原样返回。"""
+    if value is None:
+        return ""
+    return _AUDIT_ACTION_LABELS.get(value, value)

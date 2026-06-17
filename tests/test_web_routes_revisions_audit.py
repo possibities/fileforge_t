@@ -122,6 +122,8 @@ class TestRevisionAuditRoutes(unittest.TestCase):
             session.flush()
             self.archive_a_id = archive_a.id
             self.archive_b_id = archive_b.id
+            self.org_a_id = org_a.id
+            self.org_b_id = org_b.id
 
             session.add(
                 MetadataRevision(
@@ -211,6 +213,71 @@ class TestRevisionAuditRoutes(unittest.TestCase):
                 follow_redirects=False,
             )
         self.assertEqual(resp.status_code, 404)
+
+    # ── 全局审计页 /admin/audit ──────────────────────────────────────────────
+    def _seed_org_audit(self):
+        with self.Session() as session:
+            session.add(
+                AuditLog(
+                    action="manual_correction",
+                    target_type="archive",
+                    target_id=self.archive_a_id,
+                    actor_user_id=1,
+                    organization_id=self.org_a_id,
+                )
+            )
+            session.add(
+                AuditLog(
+                    action="archive_deleted",
+                    target_type="archive",
+                    target_id=self.archive_b_id,
+                    actor_user_id=1,
+                    organization_id=self.org_b_id,
+                )
+            )
+            session.commit()
+
+    def test_global_audit_renders_for_platform_admin(self):
+        self._seed_org_audit()
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get("/admin/audit")
+        self.assertEqual(resp.status_code, 200)
+        # 平台管理员看全部:两个单位的动作都在,且动作中文化。
+        self.assertIn("人工修正", resp.text)
+        self.assertIn("删除档案", resp.text)
+
+    def test_global_audit_requires_audit_view(self):
+        with TestClient(self.app) as client:
+            self._login(client, OPERATOR_USERNAME, OPERATOR_PASSWORD)
+            resp = client.get("/admin/audit", follow_redirects=False)
+        self.assertEqual(resp.status_code, 403)
+
+    def test_global_audit_org_scope_isolates(self):
+        self._seed_org_audit()
+        with TestClient(self.app) as client:
+            self._login(client, ORG_ADMIN_USERNAME, ORG_ADMIN_PASSWORD)
+            resp = client.get("/admin/audit")
+        self.assertEqual(resp.status_code, 200)
+        # 甲单位管理员只看本单位:本单位档案在,乙单位档案的行不在。
+        self.assertIn(f"/archives/{self.archive_a_id}", resp.text)
+        self.assertNotIn(f"/archives/{self.archive_b_id}", resp.text)
+
+    def test_global_audit_action_filter(self):
+        self._seed_org_audit()
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get("/admin/audit?action=manual_correction")
+        self.assertEqual(resp.status_code, 200)
+        # 只筛 manual_correction:archive_a 的行在,archive_b 的删除行不在。
+        self.assertIn(f"/archives/{self.archive_a_id}", resp.text)
+        self.assertNotIn(f"/archives/{self.archive_b_id}", resp.text)
+
+    def test_global_audit_invalid_page_returns_400(self):
+        with TestClient(self.app) as client:
+            self._login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+            resp = client.get("/admin/audit?page=0", follow_redirects=False)
+        self.assertEqual(resp.status_code, 400)
 
 
 if __name__ == "__main__":

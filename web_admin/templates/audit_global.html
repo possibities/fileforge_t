@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}审计记录 - FileForge 管理后台{% endblock %}
+{% block body_class %}page-full{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="eyebrow">Audit</p>
+    <h1>审计记录</h1>
+    <p class="muted">全局操作留痕(登录、人工修正、删除、标记已审核、启动跑批等),按单位隔离。共 {{ result.total }} 条</p>
+  </div>
+</div>
+
+<form class="filter-bar" method="get" action="/admin/audit">
+  <label>动作
+    <select name="action">
+      <option value="">全部动作</option>
+      {% for a in action_choices %}
+      <option value="{{ a }}"{% if selected_action == a %} selected{% endif %}>{{ a | audit_action }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit">筛选</button>
+  {% if selected_action %}<a class="button-link" href="/admin/audit">清空</a>{% endif %}
+</form>
+
+<table>
+  <thead>
+    <tr>
+      <th>时间</th>
+      <th>操作人</th>
+      <th>动作</th>
+      <th>对象</th>
+      <th>整理项目</th>
+      <th>说明</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for log in result.items %}
+    <tr>
+      <td>{{ log.created_at }}</td>
+      <td>{{ log.actor_username or ("用户 #" ~ log.actor_user_id if log.actor_user_id else "系统") }}</td>
+      <td>{{ log.action | audit_action }}</td>
+      <td>
+        {% if log.target_type == "archive" and log.target_id %}<a href="/archives/{{ log.target_id }}">档案 #{{ log.target_id }}</a>
+        {% elif log.target_type == "batch" and log.target_id %}批次 #{{ log.target_id }}
+        {% elif log.target_type == "upload" and log.target_id %}上传批次 #{{ log.target_id }}
+        {% elif log.target_type %}{{ log.target_type }} #{{ log.target_id or "" }}{% endif %}
+      </td>
+      <td>{{ log.project_key or "" }}</td>
+      <td>{{ log.message or "" }}</td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="6" class="empty-state">暂无审计记录</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="grid-pager">
+  {% if page > 1 %}<a class="button-link" href="/admin/audit?action={{ selected_action }}&page={{ page - 1 }}&page_size={{ page_size }}">上一页</a>{% else %}<span class="button-link is-disabled">上一页</span>{% endif %}
+  {% if result.has_next %}<a class="button-link" href="/admin/audit?action={{ selected_action }}&page={{ page + 1 }}&page_size={{ page_size }}">下一页</a>{% else %}<span class="button-link is-disabled">下一页</span>{% endif %}
+  <span class="grid-jump muted">第 {{ page }} 页</span>
+</div>
+{% endblock %}

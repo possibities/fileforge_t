@@ -38,6 +38,10 @@
       {% set projects_active = current_path.startswith('/admin/projects') %}
       <a href="/admin/projects" class="{% if projects_active %}active{% endif %}"{% if projects_active %} aria-current="page"{% endif %}>整理项目</a>
       {% endif %}
+      {% if "audit:view" in user.permissions %}
+      {% set audit_active = current_path.startswith('/admin/audit') %}
+      <a href="/admin/audit" class="{% if audit_active %}active{% endif %}"{% if audit_active %} aria-current="page"{% endif %}>审计</a>
+      {% endif %}
     </nav>
     <div class="identity">
       <details class="account-menu">

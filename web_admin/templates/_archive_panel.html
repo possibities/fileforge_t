@@ -16,9 +16,6 @@
     <div class="table-actions">
       {% if compact %}<a class="button-link" href="/archives/{{ archive.id }}">完整详情</a>{% endif %}
       <a class="button-link" href="/archives/{{ archive.id }}/revisions">修订记录</a>
-      {% if "audit:view" in user.permissions %}
-      <a class="button-link" href="/archives/{{ archive.id }}/audit">审计记录</a>
-      {% endif %}
     </div>
   </div>
 
