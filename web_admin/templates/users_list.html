@@ -32,12 +32,12 @@
       <td class="table-actions">
         <a href="/admin/users/{{ user.id }}/edit">编辑</a>
         {% if user.status == "active" %}
-        <form method="post" action="/admin/users/{{ user.id }}/disable" style="display:inline">
+        <form class="action-form" method="post" action="/admin/users/{{ user.id }}/disable">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button type="submit">禁用</button>
+          <button type="submit" class="secondary">禁用</button>
         </form>
         {% else %}
-        <form method="post" action="/admin/users/{{ user.id }}/enable" style="display:inline">
+        <form class="action-form" method="post" action="/admin/users/{{ user.id }}/enable">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit">启用</button>
         </form>
@@ -48,5 +48,4 @@
     {% endfor %}
   </tbody>
 </table>
-<p><a href="/">返回主页</a></p>
 {% endblock %}

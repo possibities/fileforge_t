@@ -1,10 +1,18 @@
 {% extends "base.html" %}
 {% block title %}审计记录 - FileForge 管理后台{% endblock %}
 {% block content %}
-<h1>审计记录</h1>
-<p>整理项目: {{ project.project_key }}；批次: {{ batch.batch_key }}；档案: {{ archive.archive_name }}</p>
+<div class="page-header">
+  <div>
+    <p class="eyebrow">Audit</p>
+    <h1>审计记录</h1>
+    <p class="muted">整理项目: {{ project.project_key }}；批次: {{ batch.batch_key }}；档案: {{ archive.archive_name }}</p>
+  </div>
+  <div class="table-actions">
+    <a class="button-link" href="/archives/{{ archive.id }}">返回档案详情</a>
+  </div>
+</div>
 
-<p>共 {{ result.total }} 条，当前第 {{ result.page }} 页。</p>
+<p class="muted">共 {{ result.total }} 条，当前第 {{ result.page }} 页。</p>
 <table>
   <thead>
     <tr>
@@ -39,5 +47,4 @@
   {% if result.has_next %}<a class="button-link" href="/archives/{{ archive.id }}/audit?page={{ result.page + 1 }}&page_size={{ result.page_size }}">下一页</a>{% else %}<span class="button-link is-disabled">下一页</span>{% endif %}
   <span class="grid-jump muted">第 {{ result.page }} 页</span>
 </div>
-<p><a class="button-link" href="/archives/{{ archive.id }}">返回档案详情</a></p>
 {% endblock %}

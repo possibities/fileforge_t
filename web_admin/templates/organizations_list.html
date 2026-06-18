@@ -29,12 +29,12 @@
       <td class="table-actions">
         <a href="/admin/organizations/{{ org.id }}/edit">编辑</a>
         {% if org.status == "active" %}
-        <form method="post" action="/admin/organizations/{{ org.id }}/disable" style="display:inline">
+        <form class="action-form" method="post" action="/admin/organizations/{{ org.id }}/disable">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button type="submit">禁用</button>
+          <button type="submit" class="secondary">禁用</button>
         </form>
         {% else %}
-        <form method="post" action="/admin/organizations/{{ org.id }}/enable" style="display:inline">
+        <form class="action-form" method="post" action="/admin/organizations/{{ org.id }}/enable">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit">启用</button>
         </form>

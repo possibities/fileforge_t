@@ -6,7 +6,16 @@
 {% endif %}
 {% endblock %}
 {% block content %}
-<h1>在线跑批进度</h1>
+<div class="page-header">
+  <div>
+    <p class="eyebrow">Processing</p>
+    <h1>在线跑批进度</h1>
+  </div>
+  <div class="table-actions">
+    <a class="button-link" href="/batches/{{ batch.id }}">批次详情</a>
+    <a class="button-link" href="/batches/{{ batch.id }}/archives">查看档案结果</a>
+  </div>
+</div>
 
 <dl class="summary-list">
   <dt>整理项目</dt>
@@ -22,11 +31,6 @@
   <dt>统计</dt>
   <dd>总档案 {{ batch.total_archives }}，成功 {{ batch.success_count }}，失败 {{ batch.fail_count }}</dd>
 </dl>
-
-<p>
-  <a class="button-link" href="/batches/{{ batch.id }}">批次详情</a>
-  <a class="button-link" href="/batches/{{ batch.id }}/archives">查看档案结果</a>
-</p>
 
 <h2>任务</h2>
 <table>

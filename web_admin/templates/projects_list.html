@@ -49,12 +49,12 @@
         {% endif %}
         <a href="/batches?project_key={{ project.project_key }}">批次</a>
         {% if project.status == "active" %}
-        <form method="post" action="/admin/projects/{{ project.id }}/disable" style="display:inline">
+        <form class="action-form" method="post" action="/admin/projects/{{ project.id }}/disable">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button class="secondary" type="submit">禁用</button>
         </form>
         {% else %}
-        <form method="post" action="/admin/projects/{{ project.id }}/enable" style="display:inline">
+        <form class="action-form" method="post" action="/admin/projects/{{ project.id }}/enable">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit">启用</button>
         </form>
