@@ -413,7 +413,7 @@ button.secondary:hover,
 
 .upload-form {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(210px, 1.2fr) minmax(210px, 1.2fr) auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(240px, 1.4fr) auto;
   gap: 14px;
   align-items: end;
   margin-bottom: 0;
