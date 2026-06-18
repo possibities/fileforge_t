@@ -34,8 +34,10 @@
   </tbody>
 </table>
 
-{% if result.has_next %}
-<p><a href="/archives/{{ archive.id }}/revisions?page={{ result.page + 1 }}&page_size={{ result.page_size }}">下一页</a></p>
-{% endif %}
-<p><a href="/archives/{{ archive.id }}">返回档案详情</a></p>
+<div class="grid-pager">
+  {% if result.page > 1 %}<a class="button-link" href="/archives/{{ archive.id }}/revisions?page={{ result.page - 1 }}&page_size={{ result.page_size }}">上一页</a>{% else %}<span class="button-link is-disabled">上一页</span>{% endif %}
+  {% if result.has_next %}<a class="button-link" href="/archives/{{ archive.id }}/revisions?page={{ result.page + 1 }}&page_size={{ result.page_size }}">下一页</a>{% else %}<span class="button-link is-disabled">下一页</span>{% endif %}
+  <span class="grid-jump muted">第 {{ result.page }} 页</span>
+</div>
+<p><a class="button-link" href="/archives/{{ archive.id }}">返回档案详情</a></p>
 {% endblock %}
