@@ -413,7 +413,7 @@ button.secondary:hover,
 
 .upload-form {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(240px, 1.4fr) auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(210px, 1.2fr) minmax(210px, 1.2fr) auto;
   gap: 14px;
   align-items: end;
   margin-bottom: 0;
@@ -886,7 +886,7 @@ dd {
   margin-top: 0;
 }
 
-/* ── 档案查询(全局检索 + 主从预览 + Excel 表格)──────────────────────────── */
+/* ── 档案查询(全局检索 + Excel 表格;详情片段样式复用)────────────────────── */
 .archive-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
@@ -1221,7 +1221,7 @@ dd {
   min-height: 0;
 }
 
-/* 右栏详情预览 */
+/* 详情片段与窄版详情布局 */
 .archive-detail-pane {
   position: sticky;
   top: 84px;
@@ -1265,7 +1265,7 @@ dd {
   font-size: 15px;
 }
 
-/* 窄栏(右栏预览)下强制单列,避免信息+图像挤在一起 */
+/* 窄版详情下强制单列,避免信息+图像挤在一起 */
 .archive-panel--compact .archive-detail-layout {
   grid-template-columns: 1fr;
 }

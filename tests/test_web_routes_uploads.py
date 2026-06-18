@@ -77,7 +77,7 @@ class TestUploadRoutes(unittest.TestCase):
         )
         self.assertIn(resp.status_code, {302, 303})
 
-    def test_upload_page_renders_file_picker_and_drop_zone(self):
+    def test_upload_page_renders_folder_picker_and_drop_zone(self):
         with TestClient(self.app) as client:
             self._login(client)
             resp = client.get("/uploads")
@@ -85,10 +85,9 @@ class TestUploadRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn("proj_a", resp.text)
         self.assertIn("data-file-input", resp.text)
+        self.assertIn("data-folder-input", resp.text)
+        self.assertIn("webkitdirectory", resp.text)
         self.assertIn("data-dropzone", resp.text)
-        # 单一文件选择框 + 文件夹切换(webkitdirectory 由 JS 在勾选时动态加,不在静态 HTML)。
-        self.assertIn("data-folder-toggle", resp.text)
-        self.assertNotIn("data-folder-input", resp.text)
 
     def test_upload_page_ignores_blank_filter_values(self):
         with TestClient(self.app) as client:
