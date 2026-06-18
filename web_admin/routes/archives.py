@@ -1,240 +1,44 @@
+"""档案与批次浏览路由:批次列表/详情、全局与按批次的档案检索表格、
+档案详情/片段/页面图片、CSV 导出,以及删除/批量删除/标记已审核等管理操作。
+
+访问控制、组织隔离、查询解析、可选值常量等共享依赖在 `archive_common`;
+审核工作台在 `review.py`,修订/审计在 `audit.py`。"""
+
 from __future__ import annotations
 
 import csv
 import io
 import math
 import mimetypes
-from pathlib import Path
 from typing import Optional
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Query, Request, Response, status
 from fastapi.responses import FileResponse, RedirectResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from config.config import Config
-from constants import CODE_NEW, CODE_OLD
 from processors.exporter import Exporter
-from infrastructure.db import projects as projects_service, queries
+from infrastructure.db import queries
 from infrastructure.db.models import (
     CORRECTION_STATUS,
     ArchivePage,
     ArchiveRecord,
     ProcessingBatch,
-    Project,
-    UploadBatch,
-    UploadedFile,
 )
 from infrastructure.db.repositories import (
     RETENTION_PERIOD_CHOICES,
-    ManualCorrectionInput,
-    apply_manual_correction,
     delete_archive,
     delete_processing_batch,
     record_audit_log,
 )
-
 from web_admin.auth import CurrentUser
 from web_admin.db import get_session
-from web_admin.routes import (
-    has_platform_scope,
-    load_current_user_from_request,
-    verify_csrf_from_request,
-)
+from web_admin.routes import verify_csrf_from_request
+from web_admin.routes.archive_common import *  # noqa: F401,F403 (共享依赖,见 __all__)
 
 
 router = APIRouter()
-
-
-ARCHIVE_VIEW_PERMISSION = "archive:view"
-AUDIT_VIEW_PERMISSION = "audit:view"
-ARCHIVE_CORRECT_PERMISSION = "archive:correct"
-ARCHIVE_DELETE_PERMISSION = "archive:delete"
-PREVIEW_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tif", ".tiff"}
-
-
-def _can_access_organization(
-    current_user: CurrentUser,
-    organization_id: Optional[int],
-) -> bool:
-    if has_platform_scope(current_user):
-        return True
-    return organization_id is not None and organization_id == current_user.organization_id
-
-
-def _require_archive_view(
-    request: Request,
-    session: Session,
-) -> tuple[Optional[CurrentUser], Optional[Response]]:
-    current_user = load_current_user_from_request(request, session)
-    if current_user is None:
-        return None, RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
-    if ARCHIVE_VIEW_PERMISSION not in current_user.permissions:
-        return current_user, Response(status_code=status.HTTP_403_FORBIDDEN)
-    return current_user, None
-
-
-def _require_archive_correct(
-    request: Request,
-    session: Session,
-) -> tuple[Optional[CurrentUser], Optional[Response]]:
-    current_user, error_response = _require_archive_view(request, session)
-    if error_response is not None:
-        return current_user, error_response
-    if ARCHIVE_CORRECT_PERMISSION not in current_user.permissions:
-        return current_user, Response(status_code=status.HTTP_403_FORBIDDEN)
-    return current_user, None
-
-
-def _require_archive_delete(
-    request: Request,
-    session: Session,
-) -> tuple[Optional[CurrentUser], Optional[Response]]:
-    current_user, error_response = _require_archive_view(request, session)
-    if error_response is not None:
-        return current_user, error_response
-    if ARCHIVE_DELETE_PERMISSION not in current_user.permissions:
-        return current_user, Response(status_code=status.HTTP_403_FORBIDDEN)
-    return current_user, None
-
-
-def _project_by_key(session: Session, project_key: str) -> Optional[Project]:
-    return session.scalar(select(Project).where(Project.project_key == project_key))
-
-
-def _can_access_batch(
-    session: Session,
-    current_user: CurrentUser,
-    batch: ProcessingBatch,
-) -> Optional[Project]:
-    project = session.get(Project, batch.project_id)
-    if project is None or not _can_access_organization(current_user, project.organization_id):
-        return None
-    if (
-        not has_platform_scope(current_user)
-        and batch.organization_id is not None
-        and batch.organization_id != current_user.organization_id
-    ):
-        return None
-    return project
-
-
-def _can_access_archive(
-    session: Session,
-    current_user: CurrentUser,
-    archive: ArchiveRecord,
-) -> Optional[tuple[ProcessingBatch, Project]]:
-    batch = session.get(ProcessingBatch, archive.batch_id)
-    if batch is None:
-        return None
-    project = _can_access_batch(session, current_user, batch)
-    if project is None:
-        return None
-    if (
-        not has_platform_scope(current_user)
-        and archive.organization_id is not None
-        and archive.organization_id != current_user.organization_id
-    ):
-        return None
-    return batch, project
-
-
-def _as_list(values: Optional[list[str]]) -> list[str]:
-    return [value.strip() for value in (values or []) if value and value.strip()]
-
-
-def _clean_optional_str(value: Optional[str]) -> Optional[str]:
-    cleaned = (value or "").strip()
-    return cleaned or None
-
-
-def _parse_optional_int_query(value: Optional[str], *, name: str) -> Optional[int]:
-    cleaned = _clean_optional_str(value)
-    if cleaned is None:
-        return None
-    try:
-        return int(cleaned)
-    except ValueError as exc:
-        raise ValueError(f"{name}必须是整数") from exc
-
-
-def _parse_int_query(value: Optional[str], *, name: str, default: int) -> int:
-    cleaned = _clean_optional_str(value)
-    if cleaned is None:
-        return default
-    try:
-        return int(cleaned)
-    except ValueError as exc:
-        raise ValueError(f"{name}必须是整数") from exc
-
-
-def _scoped_organization_id(current_user: CurrentUser) -> Optional[int]:
-    if has_platform_scope(current_user):
-        return None
-    return current_user.organization_id
-
-
-def _available_projects(session: Session, current_user: CurrentUser):
-    return projects_service.list_projects(
-        session,
-        organization_id=_scoped_organization_id(current_user),
-    )
-
-
-def _bad_request(exc: ValueError) -> Response:
-    return Response(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        content=str(exc).encode("utf-8"),
-        media_type="text/plain; charset=utf-8",
-    )
-
-
-def _is_relative_to(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-    except ValueError:
-        return False
-    return True
-
-
-def _resolve_page_image_path(
-    session: Session,
-    *,
-    page: ArchivePage,
-    batch: ProcessingBatch,
-) -> Optional[Path]:
-    candidates: list[Path] = []
-
-    if page.uploaded_file_id is not None:
-        uploaded = session.get(UploadedFile, page.uploaded_file_id)
-        if uploaded is not None:
-            upload = session.get(UploadBatch, uploaded.upload_batch_id)
-            upload_root = Path(upload.storage_root).resolve() if upload is not None else None
-            stored_path = Path(uploaded.stored_path)
-            candidate = (
-                stored_path.resolve()
-                if stored_path.is_absolute() or upload_root is None
-                else (upload_root / stored_path).resolve()
-            )
-            if upload_root is not None and _is_relative_to(candidate, upload_root):
-                candidates.append(candidate)
-
-    if batch.input_dir:
-        input_root = Path(batch.input_dir).resolve()
-        image_path = Path(page.image_path.replace("\\", "/"))
-        candidate = (
-            image_path.resolve()
-            if image_path.is_absolute()
-            else (input_root / image_path).resolve()
-        )
-        if _is_relative_to(candidate, input_root):
-            candidates.append(candidate)
-
-    for candidate in candidates:
-        if candidate.suffix.lower() in PREVIEW_IMAGE_EXTENSIONS and candidate.is_file():
-            return candidate
-    return None
 
 
 @router.get("/batches")
@@ -324,28 +128,6 @@ def get_batch_detail(
             "csrf_token": request.cookies.get("fileforge_csrf", ""),
         },
     )
-
-
-_SORT_DIRECTIONS = {"asc", "desc"}
-
-# 档案实际可能出现的处理状态(检索筛选下拉用);完整枚举 PROCESSING_STATUS 还含
-# ocr_running/llm_running 等 job 级分阶段状态,只出现在处理任务上,不会落到档案。
-_ARCHIVE_PROCESSING_STATUS_CHOICES = ("queued", "running", "success", "failed", "error")
-
-# 审核筛选只暴露当前流程在用的 3 个值(legacy 的 not_required/in_review/confirmed 不展示)。
-_ARCHIVE_REVIEW_STATUS_CHOICES = ("pending", "needs_review", "reviewed")
-
-# 实体分类号可选值:2020 起新码 + 2020 前旧码,(code, 展示标签) 对。
-_CLASSIFICATION_CODE_CHOICES = (
-    [(code, f"{code} · {name}") for name, code in CODE_NEW.items()]
-    + [(code, f"{code} · {name}(2020前)") for name, code in CODE_OLD.items()]
-)
-
-# 实体分类号 → 名称(保存时由号自动同步名称,二者保持一致)。
-_CODE_TO_CLASS_NAME: dict[str, str] = {}
-for _cmap in (CODE_NEW, CODE_OLD):
-    for _cname, _ccode in _cmap.items():
-        _CODE_TO_CLASS_NAME[_ccode] = _cname
 
 
 def _archive_filter_from_query(query) -> queries.ArchiveFilter:
@@ -671,7 +453,6 @@ def list_archives(
     )
 
 
-
 @router.get("/archives/{archive_id}")
 def get_archive_detail(
     request: Request,
@@ -716,7 +497,7 @@ def get_archive_panel(
     archive_id: int,
     session: Session = Depends(get_session),
 ) -> Response:
-    """档案详情片段(右栏主从预览用):复用 archive_detail 的数据与组织隔离。"""
+    """档案详情片段:复用 archive_detail 的数据与组织隔离。"""
     current_user, error_response = _require_archive_view(request, session)
     if error_response is not None:
         return error_response
@@ -776,183 +557,6 @@ def get_archive_page_image(
 
     media_type = mimetypes.guess_type(str(image_path))[0] or "application/octet-stream"
     return FileResponse(str(image_path), media_type=media_type)
-
-
-@router.get("/archives/{archive_id}/revisions")
-def list_archive_revisions(
-    request: Request,
-    archive_id: int,
-    page: Optional[str] = None,
-    page_size: Optional[str] = None,
-    session: Session = Depends(get_session),
-) -> Response:
-    current_user, error_response = _require_archive_view(request, session)
-    if error_response is not None:
-        return error_response
-
-    archive = session.get(ArchiveRecord, archive_id)
-    if archive is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-    access = _can_access_archive(session, current_user, archive)
-    if access is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-    batch, project = access
-
-    try:
-        page_num = _parse_int_query(page, name="page", default=1)
-        page_size_num = _parse_int_query(page_size, name="page_size", default=50)
-        result = queries.list_revisions(
-            session,
-            archive_id=archive_id,
-            page=page_num,
-            page_size=page_size_num,
-        )
-    except ValueError as exc:
-        return _bad_request(exc)
-
-    templates = request.app.state.templates
-    return templates.TemplateResponse(
-        request,
-        "revisions_list.html",
-        {
-            "user": current_user,
-            "project": project,
-            "batch": batch,
-            "archive": archive,
-            "result": result,
-        },
-    )
-
-
-@router.get("/archives/{archive_id}/audit")
-def list_archive_audit_logs(
-    request: Request,
-    archive_id: int,
-    page: Optional[str] = None,
-    page_size: Optional[str] = None,
-    session: Session = Depends(get_session),
-) -> Response:
-    current_user, error_response = _require_archive_view(request, session)
-    if error_response is not None:
-        return error_response
-    if AUDIT_VIEW_PERMISSION not in current_user.permissions:
-        return Response(status_code=status.HTTP_403_FORBIDDEN)
-
-    archive = session.get(ArchiveRecord, archive_id)
-    if archive is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-    access = _can_access_archive(session, current_user, archive)
-    if access is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-    batch, project = access
-
-    try:
-        page_num = _parse_int_query(page, name="page", default=1)
-        page_size_num = _parse_int_query(page_size, name="page_size", default=50)
-        result = queries.list_audit_logs(
-            session,
-            target_type="archive",
-            target_id=archive_id,
-            page=page_num,
-            page_size=page_size_num,
-        )
-    except ValueError as exc:
-        return _bad_request(exc)
-
-    templates = request.app.state.templates
-    return templates.TemplateResponse(
-        request,
-        "audit_list.html",
-        {
-            "user": current_user,
-            "project": project,
-            "batch": batch,
-            "archive": archive,
-            "result": result,
-        },
-    )
-
-
-@router.get("/admin/audit")
-def global_audit_log(
-    request: Request,
-    action: Optional[str] = None,
-    page: Optional[str] = None,
-    page_size: Optional[str] = None,
-    session: Session = Depends(get_session),
-) -> Response:
-    """全局审计记录:跨档案/批次/项目的操作留痕,按单位隔离,可按动作筛选。"""
-    current_user, error_response = _require_archive_view(request, session)
-    if error_response is not None:
-        return error_response
-    if AUDIT_VIEW_PERMISSION not in current_user.permissions:
-        return Response(status_code=status.HTTP_403_FORBIDDEN)
-
-    try:
-        page_num = _parse_int_query(page, name="page", default=1)
-        page_size_num = _parse_int_query(page_size, name="page_size", default=50)
-    except ValueError as exc:
-        return _bad_request(exc)
-
-    org_id = _scoped_organization_id(current_user)
-    clean_action = (action or "").strip() or None
-    try:
-        result = queries.search_audit_logs(
-            session,
-            organization_id=org_id,
-            action=clean_action,
-            page=page_num,
-            page_size=page_size_num,
-        )
-    except ValueError as exc:
-        return _bad_request(exc)
-
-    action_choices = queries.audit_action_choices(session, organization_id=org_id)
-    templates = request.app.state.templates
-    return templates.TemplateResponse(
-        request,
-        "audit_global.html",
-        {
-            "user": current_user,
-            "result": result,
-            "action_choices": action_choices,
-            "selected_action": clean_action or "",
-            "page": page_num,
-            "page_size": page_size_num,
-        },
-    )
-
-
-def _current_values_from_archive(archive: ArchiveRecord) -> dict[str, str]:
-    md = archive.final_metadata or {}
-    return {
-        "title": md.get("题名") or archive.title or "",
-        "responsible_party": md.get("责任者") or archive.responsible_party or "",
-        "classification_code": md.get("实体分类号") or archive.classification_code or "",
-        "retention_period": md.get("保管期限") or archive.retention_period or "永久",
-        "openness_status": md.get("开放状态") or archive.openness_status or "",
-        "archive_year": md.get("归档年度") or archive.archive_year or "",
-        "document_number": md.get("文件编号") or archive.document_number or "",
-        "fonds_unit_name": md.get("立档单位名称") or archive.fonds_unit_name or "",
-        "reason": "",
-    }
-
-
-def _clean_form_field(
-    raw: Optional[str],
-    *,
-    max_len: int,
-    name: str,
-    required: bool = True,
-) -> tuple[Optional[str], Optional[str]]:
-    value = (raw or "").strip()
-    if not value:
-        if required:
-            return None, f"{name}不能为空"
-        return "", None
-    if len(value) > max_len:
-        return None, f"{name}长度不能超过 {max_len} 字符"
-    return value, None
 
 
 @router.post("/archives/{archive_id}/delete")
@@ -1082,297 +686,3 @@ def post_bulk_delete_archives(
         delete_archive(session, archive=archive, actor_user_id=current_user.id)
     session.commit()
     return RedirectResponse(url="/archives", status_code=status.HTTP_303_SEE_OTHER)
-
-
-@router.get("/review")
-def review_queue(
-    request: Request,
-    session: Session = Depends(get_session),
-) -> Response:
-    """验证(待复核)队列:列出本权限范围内 review_status=needs_review 的档案。"""
-    current_user, error_response = _require_archive_view(request, session)
-    if error_response is not None:
-        return error_response
-    if ARCHIVE_CORRECT_PERMISSION not in current_user.permissions:
-        return Response(status_code=status.HTTP_403_FORBIDDEN)
-
-    query = request.query_params
-    try:
-        page_num = _parse_int_query(query.get("page"), name="page", default=1)
-    except ValueError as exc:
-        return _bad_request(exc)
-
-    result = queries.verification_queue(
-        session,
-        organization_id=_scoped_organization_id(current_user),
-        page=page_num,
-        page_size=50,
-    )
-    templates = request.app.state.templates
-    return templates.TemplateResponse(
-        request,
-        "review_list.html",
-        {
-            "user": current_user,
-            "result": result,
-            "page": page_num,
-            "csrf_token": request.cookies.get("fileforge_csrf", ""),
-            "prev_url": f"/review?page={page_num - 1}" if page_num > 1 else None,
-            "next_url": f"/review?page={page_num + 1}" if result.has_next else None,
-        },
-    )
-
-
-@router.post("/review/mark-reviewed")
-def post_review_mark_reviewed(
-    request: Request,
-    archive_id: list[int] = Form(default=[]),
-    csrf_token: Optional[str] = Form(default=None),
-    session: Session = Depends(get_session),
-) -> Response:
-    """批量把选中档案标记为已复核(review_status=reviewed),逐条校验组织权限并写审计。"""
-    current_user, error_response = _require_archive_correct(request, session)
-    if error_response is not None:
-        return error_response
-    if not verify_csrf_from_request(request, session, csrf_token):
-        return Response(status_code=status.HTTP_403_FORBIDDEN)
-
-    for aid in archive_id:
-        archive = session.get(ArchiveRecord, aid)
-        if archive is None:
-            continue
-        if _can_access_archive(session, current_user, archive) is None:
-            continue
-        old_status = archive.review_status
-        archive.review_status = "reviewed"
-        record_audit_log(
-            session,
-            actor_user_id=current_user.id,
-            organization_id=archive.organization_id,
-            project_id=archive.project_id,
-            action="archive_reviewed",
-            target_type="archive",
-            target_id=archive.id,
-            before_data={"review_status": old_status},
-            after_data={"review_status": "reviewed"},
-        )
-    session.commit()
-    return RedirectResponse(url="/review", status_code=status.HTTP_303_SEE_OTHER)
-
-
-def _render_workstation(
-    request: Request,
-    *,
-    current_user: CurrentUser,
-    session: Session,
-    archive,
-    values: Optional[dict] = None,
-    error: Optional[str] = None,
-    notice: Optional[str] = None,
-) -> Response:
-    """渲染审核工作台:左=待审核队列,中=页面图像,右=可改元数据。"""
-    queue = queries.verification_queue(
-        session,
-        organization_id=_scoped_organization_id(current_user),
-        page=1,
-        page_size=200,
-    ).items
-    if values is None:
-        values = _current_values_from_archive(archive)
-    return request.app.state.templates.TemplateResponse(
-        request,
-        "workstation.html",
-        {
-            "user": current_user,
-            "archive": archive,
-            "queue": queue,
-            "values": values,
-            "retention_choices": list(RETENTION_PERIOD_CHOICES),
-            "classification_choices": _CLASSIFICATION_CODE_CHOICES,
-            "openness_choices": ["开放", "控制"],
-            "csrf_token": request.cookies.get("fileforge_csrf", ""),
-            "error": error,
-            "notice": notice,
-        },
-    )
-
-
-@router.get("/review/{archive_id}")
-def review_workstation(
-    request: Request,
-    archive_id: int,
-    notice: Optional[str] = None,
-    session: Session = Depends(get_session),
-) -> Response:
-    current_user, error_response = _require_archive_view(request, session)
-    if error_response is not None:
-        return error_response
-    if ARCHIVE_CORRECT_PERMISSION not in current_user.permissions:
-        return Response(status_code=status.HTTP_403_FORBIDDEN)
-
-    archive_rec = session.get(ArchiveRecord, archive_id)
-    if archive_rec is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-    if _can_access_archive(session, current_user, archive_rec) is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-    detail = queries.get_archive_detail(session, archive_id=archive_id)
-    if detail is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-
-    return _render_workstation(
-        request,
-        current_user=current_user,
-        session=session,
-        archive=detail,
-        notice="已保存修改。" if notice == "saved" else None,
-    )
-
-
-@router.post("/review/{archive_id}/save")
-def post_review_save(
-    request: Request,
-    archive_id: int,
-    title: Optional[str] = Form(default=None),
-    responsible_party: Optional[str] = Form(default=None),
-    classification_code: Optional[str] = Form(default=None),
-    retention_period: Optional[str] = Form(default=None),
-    openness_status: Optional[str] = Form(default=None),
-    archive_year: Optional[str] = Form(default=None),
-    document_number: Optional[str] = Form(default=None),
-    fonds_unit_name: Optional[str] = Form(default=None),
-    reason: Optional[str] = Form(default=None),
-    csrf_token: Optional[str] = Form(default=None),
-    session: Session = Depends(get_session),
-) -> Response:
-    """在工作台保存人工修正(题名/责任者/分类号/保管期限/开放状态/年度/文号/立档单位)。"""
-    current_user, error_response = _require_archive_correct(request, session)
-    if error_response is not None:
-        return error_response
-    if not verify_csrf_from_request(request, session, csrf_token):
-        return Response(status_code=status.HTTP_403_FORBIDDEN)
-
-    archive = session.get(ArchiveRecord, archive_id)
-    if archive is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-    if _can_access_archive(session, current_user, archive) is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-
-    err: Optional[str] = None
-    clean_title, err = _clean_form_field(title, max_len=500, name="题名")
-    clean_party = clean_class = clean_retention = clean_reason = None
-    if err is None:
-        clean_party, err = _clean_form_field(responsible_party, max_len=200, name="责任者")
-    if err is None:
-        clean_class, err = _clean_form_field(classification_code, max_len=32, name="实体分类号")
-    if err is None:
-        clean_retention = (retention_period or "").strip()
-        if clean_retention not in RETENTION_PERIOD_CHOICES:
-            err = f"保管期限必须为 {', '.join(RETENTION_PERIOD_CHOICES)} 之一"
-    clean_openness = clean_year = clean_docnum = clean_fonds = None
-    if err is None:
-        clean_openness = (openness_status or "").strip()
-        if clean_openness not in ("开放", "控制"):
-            err = "开放状态必须为 开放 或 控制"
-    if err is None:
-        clean_year, err = _clean_form_field(archive_year, max_len=8, name="归档年度", required=False)
-        if err is None and clean_year and not clean_year.isdigit():
-            err = "归档年度必须是数字"
-    if err is None:
-        clean_docnum, err = _clean_form_field(document_number, max_len=128, name="文件编号", required=False)
-    if err is None:
-        clean_fonds, err = _clean_form_field(fonds_unit_name, max_len=255, name="立档单位名称", required=False)
-    if err is None:
-        clean_reason, err = _clean_form_field(reason, max_len=500, name="原因", required=False)
-
-    if err is not None:
-        detail = queries.get_archive_detail(session, archive_id=archive_id)
-        return _render_workstation(
-            request,
-            current_user=current_user,
-            session=session,
-            archive=detail,
-            values={
-                "title": (title or "").strip(),
-                "responsible_party": (responsible_party or "").strip(),
-                "classification_code": (classification_code or "").strip(),
-                "retention_period": (retention_period or "").strip(),
-                "openness_status": (openness_status or "").strip(),
-                "archive_year": (archive_year or "").strip(),
-                "document_number": (document_number or "").strip(),
-                "fonds_unit_name": (fonds_unit_name or "").strip(),
-                "reason": (reason or "").strip(),
-            },
-            error=err,
-        )
-
-    try:
-        apply_manual_correction(
-            session,
-            archive=archive,
-            new_values=ManualCorrectionInput(
-                title=clean_title,
-                responsible_party=clean_party,
-                classification_code=clean_class,
-                retention_period=clean_retention,
-                classification_name=_CODE_TO_CLASS_NAME.get(clean_class),
-                openness_status=clean_openness,
-                archive_year=clean_year or "",
-                document_number=clean_docnum or "",
-                fonds_unit_name=clean_fonds or "",
-            ),
-            actor_user_id=current_user.id,
-            reason=clean_reason or None,
-        )
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-
-    return RedirectResponse(
-        url=f"/review/{archive_id}?notice=saved", status_code=status.HTTP_303_SEE_OTHER
-    )
-
-
-@router.post("/review/{archive_id}/done")
-def post_review_done(
-    request: Request,
-    archive_id: int,
-    csrf_token: Optional[str] = Form(default=None),
-    session: Session = Depends(get_session),
-) -> Response:
-    """标记为已审核并跳到队列中的下一条;队列空则回到审核列表。"""
-    current_user, error_response = _require_archive_correct(request, session)
-    if error_response is not None:
-        return error_response
-    if not verify_csrf_from_request(request, session, csrf_token):
-        return Response(status_code=status.HTTP_403_FORBIDDEN)
-
-    archive = session.get(ArchiveRecord, archive_id)
-    if archive is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-    if _can_access_archive(session, current_user, archive) is None:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
-
-    old_status = archive.review_status
-    archive.review_status = "reviewed"
-    record_audit_log(
-        session,
-        actor_user_id=current_user.id,
-        organization_id=archive.organization_id,
-        project_id=archive.project_id,
-        action="archive_reviewed",
-        target_type="archive",
-        target_id=archive.id,
-        before_data={"review_status": old_status},
-        after_data={"review_status": "reviewed"},
-    )
-    session.commit()
-
-    nxt = queries.verification_queue(
-        session,
-        organization_id=_scoped_organization_id(current_user),
-        page=1,
-        page_size=1,
-    ).items
-    target = f"/review/{nxt[0].id}" if nxt else "/review"
-    return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)

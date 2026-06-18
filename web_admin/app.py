@@ -15,9 +15,11 @@ from web_admin import auth as auth_service
 from web_admin.db import get_session
 from web_admin.status_labels import audit_action_label, status_label
 from web_admin.routes import archives as archive_routes
+from web_admin.routes import audit as audit_routes
 from web_admin.routes import auth as auth_routes
 from web_admin.routes import organizations as organizations_routes
 from web_admin.routes import projects as projects_routes
+from web_admin.routes import review as review_routes
 from web_admin.routes import uploads as uploads_routes
 from web_admin.routes import users as users_routes
 from web_admin.settings import WebAdminSettings
@@ -75,6 +77,8 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.include_router(projects_routes.router)
     app.include_router(uploads_routes.router)
     app.include_router(archive_routes.router)
+    app.include_router(review_routes.router)
+    app.include_router(audit_routes.router)
 
     @app.exception_handler(StarletteHTTPException)
     def http_exception_handler(request: Request, exc: StarletteHTTPException) -> Response:
