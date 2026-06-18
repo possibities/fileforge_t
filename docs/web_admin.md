@@ -41,7 +41,7 @@ export WEB_MAX_UPLOAD_BYTES="209715200"
 export WEB_MAX_UPLOAD_FILES="2000"
 ```
 
-生产 HTTPS 后应把 `WEB_COOKIE_SECURE=true`。`WEB_UPLOAD_STORAGE_ROOT` 保存上传原图，`WEB_PROCESSING_OUTPUT_ROOT` 保存在线跑批导出的 JSON/CSV。`WEB_MAX_UPLOAD_BYTES` 默认 200 MiB,上传大文件夹前应按机器磁盘和网络情况调大,例如 2 GiB:
+生产 HTTPS 后应把 `WEB_COOKIE_SECURE=true`。`WEB_UPLOAD_STORAGE_ROOT` 保存上传原图，`WEB_PROCESSING_OUTPUT_ROOT` 保存在线跑批导出的 JSON/CSV。`WEB_MAX_UPLOAD_BYTES` 默认 200 MiB,上传大批量 zip 前应按机器磁盘和网络情况调大,例如 2 GiB:
 
 ```bash
 export WEB_MAX_UPLOAD_BYTES="$((2 * 1024 * 1024 * 1024))"
@@ -207,14 +207,14 @@ journalctl -u fileforge-web -f
 1. 登录后台。
 2. 进入 `/admin/projects` 创建或确认项目。
 3. 进入 `/uploads`。
-4. 选择项目,上传散图、zip 或文件夹。
+4. 选择项目,上传图片或 zip。
 5. 上传成功后点击“开始处理”。
 6. 系统创建 `processing_batches` 和 `processing_jobs`。
 7. FastAPI background task 调用 `run_upload_processing_batch`。
 8. 后台任务复用 `ArchiveClassifier + BatchProcessor + BatchRecorder` 完成 OCR、LLM、规则、导出和入库。
 9. 进入 `/processing/batches/{batch_id}` 查看任务进度、事件和结果入口。
 
-zip 上传约定:一级目录表示一份档案；散图上传会被归为同一份档案。网页上传已统一为单一“图片或 zip”入口(不再单独提供文件夹选择器):多份档案请打包成 zip 上传,zip 内的子目录会自动识别为不同档案;浏览器拖拽文件夹兼容性不稳定,拖拽请使用图片或 zip。
+zip 上传约定:一级目录表示一份档案；散图上传会被归为同一份档案。网页上传为单一文件选择框:默认选图片或 zip(zip 内子目录自动分档);勾选“改为选择整个文件夹”后(JS 给该输入加 `webkitdirectory`),可直接选含多个子目录的文件夹,根目录下每个子目录识别为一份档案。拖拽区支持图片/zip,拖拽文件夹浏览器兼容性差,请改用文件夹选择。
 
 也可以用 CLI 处理已经上传成功的批次，适合演示补跑或未来独立 worker 过渡:
 
@@ -228,7 +228,7 @@ python -m utils.processing_runner --upload-batch-id 1
 
 - `/login`: 登录页。
 - `/`: 登录后的后台首页。
-- `/uploads`: 上传图片/zip/文件夹、查看上传批次、启动处理。
+- `/uploads`: 上传图片或 zip、查看上传批次、启动处理。
 - `/processing/batches/{batch_id}`: 在线跑批进度、任务列表和事件流。
 - `/admin/users`: 用户列表。
 - `/admin/users/new`: 新建用户。
@@ -241,10 +241,10 @@ python -m utils.processing_runner --upload-batch-id 1
 - `/admin/projects/{project_id}/disable` 与 `/enable`: 切项目 status。
 - `/batches`: 按 `project_key` 查询批次。
 - `/batches/{batch_id}`: 批次详情。
-- `/archives`: 全局档案查询。跨批次/项目检索,按当前用户单位权限自动隔离;左侧 Excel 式表格(点表头排序、列内联筛选行、表头与首列冻结、每页 50/100/200 + 跳页、列显示/隐藏),右侧分栏主从预览(点行即在右栏显示元数据与页面缩略图,不跳页)。可带 `?project_key=`、`?batch_id=`、各筛选字段、`?sort=&dir=`、`?selected=` 等查询串。
+- `/archives`: 全局档案查询。跨批次/项目检索,按当前用户单位权限自动隔离;Excel 式表格支持点表头排序、列内联筛选行、表头与首列冻结、每页 50/100/200 + 跳页、列显示/隐藏和批量删除;“详情”链接进入档案详情整页。可带 `?project_key=`、`?batch_id=`、各筛选字段、`?sort=&dir=` 等查询串。
 - `/batches/{batch_id}/archives`: 复用同一张档案查询表格,锁定到该批次范围。
 - `/archives/{archive_id}`: 档案详情整页;通过 `?notice=no_change` 显示“无字段变化”提示。
-- `/archives/{archive_id}/panel`: 档案详情片段(分栏主从右栏用),只读,沿用与详情页相同的数据与单位隔离。
+- `/archives/{archive_id}/panel`: 档案详情片段,只读,沿用与详情页相同的数据与单位隔离;当前主要作为可复用片段接口保留,`/archives` 查询页未内嵌右侧预览。
 - `/archives/{archive_id}/revisions`: 修订记录(字段级数据沿革,挂在单份档案上)。
 - `/archives/{archive_id}/audit`: 单档案审计记录(仍保留,但详情页不再提供入口)。
 - `/admin/audit`: 全局审计记录(`audit:view`):跨档案/批次/项目的操作留痕,按单位隔离,可按动作筛选、分页。顶栏「审计」入口指向此页。
@@ -278,7 +278,7 @@ python -m utils.processing_runner --upload-batch-id 1
 - Web 在线修正集中在审核工作台 `/review/{id}`(唯一编辑入口),可改 8 个字段(题名 / 责任者 / 实体分类号 / 保管期限 / 开放状态 / 归档年度 / 文件编号 / 立档单位名称;实体分类名称随分类号自动同步);更深字段仍走规则重跑或后续扩展。
 - `档号` / `件号` 由 `SequenceGenerator` 分配,任何时候都不开放手工编辑。
 - 一期修正采用 last-write-wins,无乐观锁;并发提交都会留痕,后到的覆盖 `final_metadata`。
-- 当前页面是服务端渲染 HTML,无前端构建链。档案查询页 `/archives` 额外带一份零依赖原生 JS(`web_admin/static/archive_search.js`),用 `X-Requested-With: fetch` 头请求表格/详情片段做局部刷新;关闭 JS 时表单整页提交、链接整页跳转、`?selected=` 服务端直出右栏,功能不丢。
+- 当前页面是服务端渲染 HTML,无前端构建链。档案查询页 `/archives` 额外带一份零依赖原生 JS(`web_admin/static/archive_search.js`),用 `X-Requested-With: fetch` 头请求表格片段做局部刷新;关闭 JS 时筛选表单整页提交、详情链接整页跳转,核心功能不丢。
 
 ## 10 验证建议
 

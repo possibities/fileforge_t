@@ -86,9 +86,9 @@ class TestUploadRoutes(unittest.TestCase):
         self.assertIn("proj_a", resp.text)
         self.assertIn("data-file-input", resp.text)
         self.assertIn("data-dropzone", resp.text)
-        # 文件夹选择器已合并到单一“图片或 zip”入口,不应再出现。
+        # 单一文件选择框 + 文件夹切换(webkitdirectory 由 JS 在勾选时动态加,不在静态 HTML)。
+        self.assertIn("data-folder-toggle", resp.text)
         self.assertNotIn("data-folder-input", resp.text)
-        self.assertNotIn("webkitdirectory", resp.text)
 
     def test_upload_page_ignores_blank_filter_values(self):
         with TestClient(self.app) as client:

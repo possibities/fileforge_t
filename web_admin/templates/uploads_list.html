@@ -30,15 +30,16 @@
       <input id="upload_name" name="upload_name" type="text" maxlength="255">
     </label>
     <label class="file-field" for="files">
-      选择文件(图片或 zip)
+      选择文件(图片 / zip / 文件夹)
       <input id="files" data-file-input name="files" type="file" accept=".jpg,.jpeg,.png,.bmp,.tiff,.tif,.zip" multiple>
     </label>
     <button type="submit">上传</button>
   </form>
+  <label class="folder-toggle"><input type="checkbox" data-folder-toggle> 改为选择整个文件夹(一次上传含多个子目录的目录)</label>
   <div class="drop-zone" data-dropzone>
     拖放图片或 zip 到这里
   </div>
-  <p class="upload-hint muted">可一次选择多张图片;整份或多份档案建议打包成 zip 上传,zip 内的子目录会自动识别为不同档案。</p>
+  <p class="upload-hint muted">默认可一次选多张图片或一个 zip(zip 内子目录自动分档);勾选上方"改为选择整个文件夹"后,可直接选含多个子目录的文件夹,根目录下每个子目录识别为一份档案。</p>
   <p class="upload-status muted" data-upload-status></p>
   {% else %}
   <p class="empty-state">
@@ -132,10 +133,26 @@
     fileInput.addEventListener("change", updateSelectedStatus);
   }
 
+  // 文件夹模式切换:给同一个 input 动态加/去 webkitdirectory,无需第二个选择框。
+  const folderToggle = document.querySelector("[data-folder-toggle]");
+  if (folderToggle && fileInput) {
+    folderToggle.addEventListener("change", () => {
+      if (folderToggle.checked) {
+        fileInput.setAttribute("webkitdirectory", "");
+        fileInput.setAttribute("directory", "");
+      } else {
+        fileInput.removeAttribute("webkitdirectory");
+        fileInput.removeAttribute("directory");
+      }
+      fileInput.value = "";
+      updateSelectedStatus();
+    });
+  }
+
   form.addEventListener("submit", (event) => {
     if (!fileInput || fileInput.files.length === 0) {
       event.preventDefault();
-      setStatus("请选择图片或 zip。");
+      setStatus("请选择文件或文件夹。");
     }
   });
 

@@ -248,12 +248,12 @@ http://172.16.118.205:8080/login
 
 1. 进入 `/admin/projects`，创建或确认整理项目。网页创建项目时只需要填项目名称和所属单位，项目唯一标识由系统自动生成。
 2. 进入 `/uploads`。
-3. 选择项目，上传图片、zip 或文件夹。
+3. 选择项目，上传图片或 zip。
 4. 点击“开始处理”。
 5. 进入 `/processing/batches/{id}` 查看任务进度和事件。
 6. 进入批次档案列表查看处理结果。
 7. 进入档案详情页查看最终字段、档号、件号、OCR/LLM/规则结果。
-8. 如需人工校核，进入编辑页修改允许修正的字段，再查看修订记录和审计日志。
+8. 如需人工校核，从档案详情页点击“去处理”进入审核工作台，在左侧队列、中间图像和右侧元数据表单中完成修正，再查看修订记录和审计日志。
 
 zip 上传建议使用一级目录区分档案：
 
@@ -266,9 +266,9 @@ demo_upload.zip
     page_001.jpg
 ```
 
-散图上传会被归为同一份档案，适合快速试跑；多份档案批量演示请打包成 zip 上传。zip 内一级子目录会各识别为一份档案;若 zip 内直接是图片(无子目录),则整体作为一份档案。(网页上传已统一为单一“图片或 zip”入口,不再单独提供文件夹选择器。)
+散图上传会被归为同一份档案，适合快速试跑；多份档案批量演示可打包成 zip 上传(zip 内一级子目录各识别为一份档案;若 zip 内直接是图片则整体作为一份)。网页上传为单一文件选择框,可选图片或 zip;勾选"改为选择整个文件夹"后,也可直接选含多个子目录的文件夹,根目录下每个子目录识别为一份档案。
 
-默认单次上传上限是 200 MiB、最多 2000 个文件。上传大文件夹前，在启动 Web 前调大限制并重启 `uvicorn`：
+默认单次上传上限是 200 MiB、最多 2000 个文件。上传大批量 zip 前，在启动 Web 前调大限制并重启 `uvicorn`：
 
 ```bash
 export WEB_MAX_UPLOAD_BYTES="$((2 * 1024 * 1024 * 1024))"
@@ -484,4 +484,3 @@ docker exec postgres psql -U postgres -d fileforge_current -c \
 docker exec postgres psql -U postgres -d fileforge_current -c \
   "UPDATE archive_records SET review_status='not_required' WHERE processing_status IN ('failed','error') AND review_status='pending';"
 ```
-
