@@ -1,7 +1,22 @@
 {% extends "base.html" %}
 {% block title %}批次详情 - FileForge 管理后台{% endblock %}
 {% block content %}
-<h1>批次详情</h1>
+<div class="page-header">
+  <div>
+    <p class="eyebrow">Batch</p>
+    <h1>批次详情</h1>
+  </div>
+  <div class="table-actions">
+    <a class="button-link" href="/batches/{{ batch.id }}/archives">查看档案</a>
+    <a class="button-link" href="/batches?project_key={{ project.project_key }}">返回批次查询</a>
+    {% if "archive:delete" in user.permissions %}
+    <form class="action-form" method="post" action="/batches/{{ batch.id }}/delete" onsubmit="return confirm('确认删除整个批次及其下所有档案、任务、事件?此操作不可恢复。');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="danger">删除批次</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
 <dl>
   <dt>批次 Key</dt>
   <dd>{{ batch.batch_key }}</dd>
@@ -51,14 +66,5 @@
 </table>
 {% else %}
 <p>无失败记录。</p>
-{% endif %}
-
-<p><a href="/batches/{{ batch.id }}/archives">查看档案</a></p>
-<p><a href="/batches?project_key={{ project.project_key }}">返回批次查询</a></p>
-{% if "archive:delete" in user.permissions %}
-<form class="action-form" method="post" action="/batches/{{ batch.id }}/delete" onsubmit="return confirm('确认删除整个批次及其下所有档案、任务、事件?此操作不可恢复。');">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <button type="submit" class="danger">删除批次</button>
-</form>
 {% endif %}
 {% endblock %}
