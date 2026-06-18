@@ -365,6 +365,15 @@ button.secondary:hover,
   margin-bottom: 0;
 }
 
+/* flex 工具条/筛选条/分页/操作区里的 button-link 靠容器 gap 控距;清掉默认外边距,
+   否则那 8px 下边距会把它顶得比相邻的普通按钮高一截(档案查询工具条最明显)。 */
+.grid-toolbar .button-link,
+.filter-bar .button-link,
+.grid-pager .button-link,
+.table-actions .button-link {
+  margin: 0;
+}
+
 .inline-form {
   margin-top: 4px;
 }
