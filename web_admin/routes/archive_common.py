@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from constants import CODE_NEW, CODE_OLD
-from infrastructure.db import projects as projects_service, queries
+from infrastructure.db import projects as projects_service
 from infrastructure.db.models import (
     ArchivePage,
     ArchiveRecord,
